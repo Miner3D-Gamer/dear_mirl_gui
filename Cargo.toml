@@ -1,0 +1,25 @@
+[package]
+name = "dear_mirl_gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+
+mirl = { path = "../mirl", default-features = false, features = [
+    "font_support",
+    "svg_support",
+    "keycode_support",
+] }
+
+fontdue = "*"
+indexmap = "*"
+num-traits = "0.2"
+
+
+[features]
+default = []
+#BAD_APPLE = []
+draw_safe = []
+
+debug-window = ["mirl/glfw_backend", "mirl/system"]

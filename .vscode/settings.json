@@ -1,0 +1,16 @@
+{
+    "cSpell.words": [
+        "Clickn't",
+        "nocapture"
+    ],
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "clippy",
+        "--message-format=json",
+        "--features",
+        "debug-window",
+        "--",
+        "-A",
+        "clippy::overly_complex_bool_expr",
+    ]
+}
