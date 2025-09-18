@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 
 
-mirl = { path = "../mirl", default-features = false, features = [
+mirl = { version = ">=4.2.0", default-features = false, features = [
     "font_support",
     "svg_support",
     "keycode_support",

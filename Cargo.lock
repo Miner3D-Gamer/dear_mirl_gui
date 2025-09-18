@@ -639,6 +639,8 @@ dependencies = [
 [[package]]
 name = "mirl"
 version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "405a85020e1ffa23f668ffff556c565863772a077adb0ab00ad4254f241a1866"
 dependencies = [
  "ahash",
  "font-kit",
