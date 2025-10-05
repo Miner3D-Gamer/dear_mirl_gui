@@ -2,6 +2,8 @@
 name = "dear_mirl_gui"
 version = "1.0.0"
 edition = "2024"
+description = "A Dear ImGui inspored RmGui for the Mirl lib"
+license = "MIT"
 
 [dependencies]
 

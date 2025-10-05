@@ -21,7 +21,7 @@
 //!
 //! Or in simpler terms:
 //! A debug window crate designed to work with Mirl
-//! 
+//!
 //! Currently known problems:
 //! Button module hover and click highlight only appears in unselected gui except when the text is moving in which case only the click highlight isn't applied
 //! Text input module automatically selects a structure when clicking after the last character
@@ -33,7 +33,6 @@ const DRAW_SAFE: bool = false;
 #[cfg(feature = "draw_safe")]
 const DRAW_SAFE: bool = true;
 
-use mirl::extensions::*;
 #[cfg(feature = "debug-window")]
 use mirl::{graphics::rgb_to_u32, platform::framework_traits::Window};
 use mirl::{
@@ -217,6 +216,7 @@ fn main_loop<
     file_system: &D,
     buffer: &Buffer,
 ) {
+    use mirl::extensions::*;
     mirl::enable_traceback();
     let font = mirl::platform::file_system::get_default_font(file_system)
         .unwrap()
