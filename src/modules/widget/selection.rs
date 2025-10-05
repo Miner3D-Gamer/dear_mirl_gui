@@ -1,6 +1,9 @@
 use mirl::{extensions::RepeatData, platform::CursorStyle};
 
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{
+    Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, get_formatting,
+    render,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A simple selection module
@@ -29,25 +32,19 @@ impl Selection {
         text: &[String],
         height: usize,
         radio_buttons: bool,
-        formatting: &crate::Formatting,
         initial_states: Option<Vec<bool>>,
     ) -> Self {
-        let mut myself = Self {
+        Self {
             text: text.to_vec(),
             height,
             color: mirl::graphics::color_presets::WHITE,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
             currently_selected: initial_states
                 .unwrap_or_else(|| false.repeat_value(text.len())),
             width: 0,
             total_height: 0,
             radio_buttons,
-        };
-
-        myself.total_height = myself.get_total_height(formatting);
-        myself.width = myself.get_total_width(formatting);
-
-        myself
+        }
     }
     /// Recalculate the total height of the module
     #[must_use]
@@ -81,8 +78,18 @@ impl Selection {
 }
 
 impl DearMirlGuiModule for Selection {
-    fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn apply_new_formatting(&mut self, formatting: &crate::Formatting) {
+        self.total_height = self.get_total_height(formatting);
+        self.width = self.get_total_width(formatting);
+    }
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         // Button alignment
         let margin_divider = 5;
         let inner_button_color = mirl::graphics::color_presets::WHITE;
@@ -95,22 +102,20 @@ impl DearMirlGuiModule for Selection {
             let margin = margin / 2;
             if self.radio_buttons {
                 let t = self.height / 2;
-                render::draw_circle::<true>(
+                render::draw_circle::<false, true>(
                     &buffer,
-                    t,
-                    offset + t,
                     t as isize,
-                    formatting.secondary_color,
-                    false,
+                    (offset + t) as isize,
+                    t as isize,
+                    formatting.foreground_color,
                 );
                 if self.currently_selected[idx] {
-                    render::draw_circle::<true>(
+                    render::draw_circle::<true, true>(
                         &buffer,
-                        t,
-                        offset + t,
+                        t as isize,
+                        (offset + t) as isize,
                         smaller as isize / 2,
                         inner_button_color,
-                        true,
                     );
                 }
             } else {
@@ -120,7 +125,7 @@ impl DearMirlGuiModule for Selection {
                     offset as isize,
                     self.height as isize,
                     self.height as isize,
-                    formatting.secondary_color,
+                    formatting.foreground_color,
                 );
                 if self.currently_selected[idx] {
                     render::draw_rectangle::<{ crate::DRAW_SAFE }>(
@@ -143,7 +148,7 @@ impl DearMirlGuiModule for Selection {
             );
             offset += self.height + formatting.vertical_margin;
         }
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         self.total_height as isize
@@ -151,12 +156,13 @@ impl DearMirlGuiModule for Selection {
     fn get_width(&self, _formatting: &crate::Formatting) -> isize {
         self.width as isize
     }
-    fn update(&mut self, info: &crate::ModuleInputs) -> crate::GuiOutput {
-        if info.focus_taken {
-            return crate::GuiOutput::default(false);
+    fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
+        if info.focus_taken.is_focus_taken() {
+            return crate::GuiOutput::empty();
         }
+        let formatting = get_formatting();
         let mut new_cursor_style = None;
-        let mut focus_taken = false;
+        let mut focus_taken = FocusTaken::FocusFree;
         if let Some(mouse_pos) = info.mouse_pos {
             let mut offset = 0;
 
@@ -179,8 +185,9 @@ impl DearMirlGuiModule for Selection {
                 };
                 if collides {
                     new_cursor_style = Some(CursorStyle::Pointer);
+                    focus_taken = FocusTaken::VisuallyTaken;
                     if info.mouse_info.left.clicked {
-                        focus_taken = true;
+                        focus_taken = FocusTaken::FunctionallyTaken;
                         let was_true = self.currently_selected[idx];
                         if self.radio_buttons {
                             self.currently_selected =
@@ -193,7 +200,7 @@ impl DearMirlGuiModule for Selection {
                     }
                 }
 
-                offset += self.height + info.formatting.vertical_margin;
+                offset += self.height + formatting.vertical_margin;
             }
         }
         crate::GuiOutput {

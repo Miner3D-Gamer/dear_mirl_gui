@@ -21,155 +21,92 @@
 //!
 //! Or in simpler terms:
 //! A debug window crate designed to work with Mirl
+//! 
+//! Currently known problems:
+//! Button module hover and click highlight only appears in unselected gui except when the text is moving in which case only the click highlight isn't applied
+//! Text input module automatically selects a structure when clicking after the last character
+//! Crank module rotation is slightly offset
+//! Lever module is not smooth
 
 #[cfg(not(feature = "draw_safe"))]
 const DRAW_SAFE: bool = false;
 #[cfg(feature = "draw_safe")]
 const DRAW_SAFE: bool = true;
 
+use mirl::extensions::*;
 #[cfg(feature = "debug-window")]
+use mirl::{graphics::rgb_to_u32, platform::framework_traits::Window};
 use mirl::{
-    extensions::*, graphics::rgb_to_u32, platform::file_system::FileSystem,
-    platform::framework_traits::Window,
-};
-use mirl::{
-    platform::{Buffer, CursorStyle, keycodes::KeyCode},
+    platform::{Buffer, CursorStyle},
     render::{self},
 };
+/// Add, remove, and edit modules
+pub mod module_manager;
+pub use module_manager::*;
 
 /// All builtin modules
 pub mod modules;
-// pub use modules::{
-//     Button, CheckBox, Image, ProgressBar, ResetFormatting, SameLine, Selection,
-//     Separator, Slider, Text, TextInput, WindowEmulator,
-// };
+
 /// The `DearMirlGui` defining file
 pub mod gui;
 pub use gui::DearMirlGui;
 
 use crate::gui::ModuleContainer;
 
-impl ButtonState {
-    #[must_use]
-    /// Create a new button state -> Pressed, clicked, and released are calculated
-    pub const fn new(current: bool, last: bool) -> Self {
-        Self {
-            down: current,
-            clicked: current && !last,
-            released: !current && last,
-        }
-    }
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// The current state of a mouse buttons and if they have just been pressed
-#[allow(missing_docs, clippy::struct_excessive_bools)]
-pub struct ButtonState {
-    down: bool,
-    clicked: bool,
-    released: bool,
-}
+// A struct to handle having multiple guis at once
+mod window_manager;
+pub use window_manager::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// The current state of the mouse buttons and if they have just been pressed
-pub struct MouseData {
-    left: ButtonState,
-    middle: ButtonState,
-    right: ButtonState,
-}
+// How deeply a gui/module has taken user input
+mod focus_taken;
+pub use focus_taken::*;
 
-#[derive(Debug, Clone)]
-#[allow(missing_docs)]
-/// The current formatting for a window/its modules
-pub struct Formatting {
-    pub font: fontdue::Font,
-    pub main_color: u32,
-    pub secondary_color: u32,
-    pub text_color: u32,
-    /// Currently unused
-    pub misc_ui_color: u32,
-    pub horizontal_margin: usize,
-    pub vertical_margin: usize,
-}
+// Formatting is used to assure that important data exists like a font and modules can adjust themselves to look a little less bad
+mod formatting;
+pub use formatting::*;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // Once again not a state machine
-/// A struct holding every bit of info the `DearMirlGui` struct and every module returns
-pub struct GuiOutput {
-    /// Requested cursor style
-    pub new_cursor_style: Option<mirl::platform::CursorStyle>,
-    /// If this window took focus
-    pub focus_taken: bool,
-    /// Requested new cursor position
-    pub new_cursor_position: Option<(isize, isize)>,
-    /// If the cursor should be hidden
-    pub hide_cursor: bool,
-    /// Requested data to set the clipboard to
-    pub new_clipboard_data: Option<mirl::platform::file_system::FileData>,
-    /// If a text input is selected (Some devices may not have a keyboard available at all times)
-    pub text_input_selected: bool,
-    /// If a module would like to access what is currently stored in the clipboard
-    pub request_clipboard_data: bool,
-}
+// Used for telling the compiler what module is what type
+mod module_path;
+pub use module_path::*;
 
-#[derive(Debug, Clone, Copy)]
-/// A struct holding all information the modules are provided with
-pub struct ModuleInputs<'a> {
-    /// If a previous module already took focus
-    pub focus_taken: bool,
-    /// The current mouse position
-    pub mouse_pos: Option<(isize, isize)>,
-    /// The mouse position since last frame - is (0, 0) when `mouse_pos` is None
-    pub mouse_pos_delta: (isize, isize),
-    /// The mouse scroll distance, (x, y)
-    pub mouse_scroll: Option<(isize, isize)>,
-    /// Info on what mouse buttons have been pressed
-    pub mouse_info: &'a MouseData,
-    /// All pressed keys
-    pub pressed_keys: &'a Vec<KeyCode>,
-    /// Delta time, what else to say about it?
-    pub delta_time: f64,
-    /// The current formatting used
-    pub formatting: &'a Formatting,
-    /// Clipboard data must be requested first
-    pub clipboard_data: &'a Option<mirl::platform::file_system::FileData>,
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// The return further info that just [`Option::None`]/[`Option::Some`]
-pub enum GuiReturnsModule<T: 'static> {
-    /// All went well and you can use the module no problem
-    AllGood(T),
-    /// There was no module with this ID
-    UnableToFindID(String),
-    /// There was an module with this ID, however the used type was not correct
-    CastingAsWrongModule {
-        /// The correct type the module should be casted as
-        correct: String,
-        /// The incorrect type the module was requested to be casted into
-        wrong: String,
-        /// The id of the module
-        id: String,
-    },
-}
+// Gui/Module output
+mod output;
+pub use output::*;
+// Gui/Module input
+mod input;
+pub use input::*;
+
+/// Input sub section for mouse data
+mod mouse_data;
+pub use mouse_data::*;
 
 /// A trait any struct can implement to be used as a `DearMirlGui` module
-pub trait DearMirlGuiModule: AnyCasting + std::fmt::Debug + WhatAmI {
+pub trait DearMirlGuiModule:
+    AnyCasting + std::fmt::Debug + WhatAmI + std::marker::Send
+{
     /// Create an internal buffer, draw all desired info on it and return
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer;
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode);
     /// Gets the height of a module regardless of the returned buffer height
     fn get_height(&self, formatting: &crate::Formatting) -> isize;
     /// Gets the width of a module regardless of the returned buffer height
     fn get_width(&self, formatting: &crate::Formatting) -> isize;
     /// Update the internal state of the module with the given information
-    fn update(&mut self, inputs: &crate::ModuleInputs) -> crate::GuiOutput;
+    fn update(&mut self, inputs: &crate::ModuleUpdateInfo) -> crate::GuiOutput;
     /// Get an offset for the next module
-    fn get_next_offset(
+    fn modify_offset_cursor(
         &self,
-        _modules: &indexmap::IndexMap<String, ModuleContainer>,
-        _current_idx: usize,
+        _modules: &[ModuleContainer],
+        _used_idx: &Vec<usize>,
         _formatting: &crate::Formatting,
-    ) -> (isize, isize) {
-        (0, 0)
+        _current: (&mut isize, &mut isize),
+    ) {
     }
+    /// Manually setting wether a module needs a redraw -> Useful when intentionally using corrupting data
+    fn set_need_redraw(&self, _need_redraw: Vec<(usize, bool)>) {}
     /// Check if the module needs a redraw
     fn need_redraw(&self) -> bool;
     /// When you have updated the formatting and wish to properly apply the change to all modules
@@ -195,6 +132,9 @@ impl<T: 'static> GuiReturnsModule<T> {
             }
             Self::UnableToFindID(id) => {
                 panic!("Unable to find a module with the id of {id}")
+            }
+            Self::Misc(stuff) => {
+                panic!("An error occurred: {stuff}")
             }
         }
     }
@@ -228,30 +168,9 @@ impl<T: DearMirlGuiModule + 'static> AnyCasting for T {
     }
 }
 
-impl GuiOutput {
-    #[must_use]
-    /// Create a new output with everything set to None or False
-    pub const fn default(took_focus: bool) -> Self {
-        Self {
-            new_cursor_style: None,
-            focus_taken: took_focus,
-            new_cursor_position: None,
-            hide_cursor: false,
-            new_clipboard_data: None,
-            text_input_selected: false,
-            request_clipboard_data: false,
-        }
-    }
-    // pub const fn set_cursor_style(
-    //     &mut self,
-    //     cursor_style: Option<CursorStyle>,
-    // ) -> &mut Self {
-    //     self.new_cursor_style = cursor_style;
-    //     self
-    // }
-}
-// #[deprecated(note = "Please enable the  feature in mirl for mutual compatibility")]
-// const fn deprecated_trigger() {}
+// ###################################################################################
+// End of library - Tests ############################################################
+// ###################################################################################
 
 #[test]
 #[cfg(not(feature = "debug-window"))]
@@ -264,17 +183,20 @@ fn main() {
 #[cfg(feature = "debug-window")]
 #[allow(dead_code)]
 fn main() {
-    let output = std::thread::Builder::new()
-        .stack_size(4 * mirl::constants::bytes::GB)
-        .spawn(actual_main);
-    let _ = output.map(|x| x.join()).unwrap();
+    actual_main();
+    // let output = std::thread::Builder::new()
+    //     .stack_size(4 * mirl::constants::bytes::GB)
+    //     .spawn(actual_main);
+    // let _ = output.map(|x| x.join()).unwrap();
 }
 #[allow(clippy::unwrap_used)]
 #[cfg(feature = "debug-window")]
 #[allow(dead_code)]
 fn actual_main() {
+    use mirl::platform::file_system::FileSystemNew;
+
     let buffer = mirl::platform::Buffer::new_empty(800, 600);
-    let mut window = mirl::platform::glfw::Framework::new(
+    let mut window = mirl::platform::minifb::Framework::new(
         "Rust Window",
         *mirl::platform::WindowSettings::default(&buffer)
             .set_position_to_middle_of_screen(),
@@ -301,65 +223,74 @@ fn main_loop<
         .as_font()
         .unwrap();
 
-    let mut gui: DearMirlGui<true, false> =
-        DearMirlGui::new_simple("Example Window", 100, 10, 0, 0, &font);
-    gui.add_module("module1", modules::Text::new("Hello World", 20, None));
-    gui.add_module(
+    set_formatting(Formatting::default(&font));
+
+    let m1 =
+        register_module("module1", modules::Text::new("Hello World", 20, None));
+    let m2 = register_module(
         "module2",
         modules::Text::new("there is text now ig", 20, None),
     );
 
-    gui.add_module(
+    let slider = register_module(
         "slider",
         modules::Slider::<f64>::new(30, None, None, None, true),
     );
-    gui.add_module(
+    let progress_bar_up = register_module(
         "progress_bar_up",
         modules::ProgressBar::new(30, None, None, false),
     );
-    gui.add_module(
+    let progress_bar_down = register_module(
         "progress_bar_down",
         modules::ProgressBar::new(30, None, None, true),
     );
 
-    gui.add_module(
+    let button = register_module(
         "button",
         modules::Button::new(
             "Clickn't Me!".into(),
             20,
             None,
+            Some(&font),
             Some(|| {
                 println!("Oh no, I've been pressed!");
             }),
-            Some(&font),
+            None,
+            None,
         ),
     );
-    gui.add_module(
+    let button2 = register_module(
         "button2",
         modules::Button::new(
+            //"A Button".into(),
             "A Button with really really long text".into(),
             20,
             None,
             None,
             None,
+            None,
+            None,
         ),
     );
-    gui.add_module(
+    let checkbox1 = register_module(
         "checkbox1",
         modules::CheckBox::new_3_state(20, "sample text".to_string()),
     );
-    gui.add_module(
+    let checkbox2 = register_module(
         "checkbox2",
         modules::CheckBox::new_2_state(20, "bottom text".to_string()),
     );
     // #[cfg(feature = "BAD_APPLE")]
-    // gui.add_module(
+    // add_module(
     //     "bad_apple".into(),
     //     CheckBox::new_3_state(100, "Evil Apple".to_string()),
     // );
-    gui.add_module("divider", modules::Separator::new(20, 300, false, None));
+    let _ = register_module(
+        "divider",
+        modules::Separator::new(20, 300, false, None),
+    );
 
-    gui.add_module(
+    let selection = register_module(
         "selection",
         modules::Selection::new(
             &[
@@ -370,12 +301,12 @@ fn main_loop<
             ],
             20,
             true,
-            &gui.formatting,
             None,
         ),
     );
-    gui.add_module("anti_new_line", modules::SameLine::new(10));
-    gui.add_module(
+    let same_line =
+        register_module("anti_new_line", modules::SameLine::new(10));
+    let selection2 = register_module(
         "selection2",
         modules::Selection::new(
             &[
@@ -386,16 +317,15 @@ fn main_loop<
             ],
             20,
             false,
-            &gui.formatting,
             None,
         ),
     );
-    gui.add_module("formatting", modules::ResetFormatting::new());
-    gui.add_module(
+    let resetter = register_module("formatting", modules::ResetOffset::new());
+    let text_input = register_module(
         "input",
         modules::TextInput::new(
             20,
-            300,
+            400,
             4,
             Some(Vec::from([
                 "text.chars().take(i + 1).collect::<String>(),".into(),
@@ -403,9 +333,18 @@ fn main_loop<
                 "   Indent testing :/".into(),
             ])),
             Some("Click me to start writing"),
-            &gui.formatting,
         ),
     );
+    let crank = register_module("crank", modules::Crank::new(60, 0, 0.0));
+    let lever = register_module("lever", modules::Lever::new(40, 80));
+    let lever2 = register_module("lever2", modules::Lever::new(40, 80));
+    let lever3 = register_module("lever3", modules::Lever::new(40, 80));
+
+    // let display =
+    //     register_module("display", modules::NumberDisplay::new(0, 3, 20.0));
+
+    let crank_info =
+        register_module("crank_info", modules::Text::new("0", 20, None));
     // let mut sub_window = DearMirlGui::<false, true>::new_simple(
     //     "Minesweeper",
     //     0,
@@ -434,17 +373,80 @@ fn main_loop<
 
     // sub_window.set_size_to_see_all_modules();
 
-    // gui.add_module("minesweeper".into(), WindowEmulator::new(sub_window));
+    // add_module("minesweeper".into(), WindowEmulator::new(sub_window));
 
-    gui.set_size_to_see_all_modules();
+    // gui.set_size_to_see_all_modules();
+    // gui2.set_size_to_see_all_modules();
+    let mut window_manager: WindowManager<true, true> =
+        WindowManager::new(Vec::from([
+            DearMirlGui::new_simple(
+                "Example Window",
+                100,
+                10,
+                0,
+                0,
+                &font,
+                &[
+                    m1.id(),
+                    m2.id(),
+                    button.id(),
+                    button2.id(),
+                    checkbox2.id(),
+                    // register_module(
+                    //     "sub_gui",
+                    //     DearMirlGui::<true, true>::new_simple(
+                    //         "Hello",
+                    //         0,
+                    //         0,
+                    //         400,
+                    //         100,
+                    //         &font,
+                    //         &Vec::from([text_input.id()]),
+                    //     ),
+                    // )
+                    // .id(),
+                    checkbox1.id(),
+                    //display.id(),
+                    crank_info.id(),
+                    crank.id(),
+                    text_input.id(),
+                ],
+            ),
+            DearMirlGui::new_simple(
+                "Another Window",
+                200,
+                300,
+                0,
+                0,
+                &font,
+                &[
+                    m1.id(),
+                    checkbox1.id(),
+                    selection.id(),
+                    same_line.id(),
+                    selection2.id(),
+                    resetter.id(),
+                    button.id(),
+                    button2.id(),
+                    checkbox2.id(),
+                    lever.id(),
+                    same_line.id(),
+                    lever2.id(),
+                    same_line.id(),
+                    lever3.id(),
+                ],
+            ),
+        ]));
+    window_manager.set_size_to_see_all_modules();
 
     let cursor_style_manager = window
-        .load_custom_cursor(
+        .load_custom_cursors(
             0.into(),
             rgb_to_u32(0, 255, 200),
             rgb_to_u32(0, 100, 100),
         )
         .unwrap();
+
     //println!("#{}", mirl::graphics::u32_to_hex(rgb_to_u32(0, 0, 255)));
     let mut frame_start = std::time::Instant::now();
     let mut delta_time = 0.0;
@@ -462,34 +464,36 @@ fn main_loop<
 
         // Set this to true if you wanna see how the gui handles casting modules to an incorrect type
         if false {
-            gui.get_module_as::<modules::Text, ()>("slider", |_| {}).unwrap();
+            get_module_as::<_, ()>(&slider, |_| {}).unwrap();
         }
 
-        gui.get_module_as_mut::<modules::ProgressBar, ()>(
-            "progress_bar_up",
-            |slider| {
-                slider.progress += delta_time as f32 / 10.0;
-                slider.progress = slider.progress.clamp(0.0, 1.0);
-                if slider.progress == 1.0 {
-                    slider.progress = 0.0;
-                }
-            },
-        )
+        get_module_as_mut::<_, ()>(&progress_bar_up, |slider| {
+            slider.progress += delta_time as f32 / 10.0;
+            slider.progress = slider.progress.clamp(0.0, 1.0);
+            if slider.progress == 1.0 {
+                slider.progress = 0.0;
+            }
+        })
+        .unwrap();
+        get_module_as_mut::<_, ()>(&crank_info, |crank_info| {
+            let value =
+                get_module_as_mut::<_, isize>(&crank, |crank| crank.rotations)
+                    .unwrap();
+            crank_info.set_text(format!("Rotations: {value}"));
+        })
         .unwrap();
 
-        gui.get_module_as_mut::<modules::Selection, ()>(
-            "selection",
-            |buttons| {
-                if buttons.currently_selected[3] {
-                    buttons.currently_selected[3] = false;
-                    buttons.radio_buttons = !buttons.radio_buttons;
-                }
-            },
-        )
+        get_module_as_mut::<modules::Selection, ()>(&selection, |buttons| {
+            if buttons.currently_selected[3] {
+                buttons.currently_selected[3] = false;
+                buttons.radio_buttons = !buttons.radio_buttons;
+                buttons.needs_redraw.set(true);
+            }
+        })
         .unwrap();
 
-        gui.get_module_as_mut::<modules::ProgressBar, ()>(
-            "progress_bar_down",
+        get_module_as_mut::<modules::ProgressBar, ()>(
+            &progress_bar_down,
             |slider| {
                 let exact = delta_time_accumulation.sin().midpoint(1.0);
 
@@ -512,18 +516,44 @@ fn main_loop<
             }
             None
         };
+        let pressed_keys = window.get_all_keys_down();
 
-        let gui_output = gui.update(
+        let gui_output = window_manager.update(
             mouse_pos,
             mouse_scroll,
             window.is_mouse_down(mirl::platform::MouseButton::Left),
             window.is_mouse_down(mirl::platform::MouseButton::Middle),
             window.is_mouse_down(mirl::platform::MouseButton::Right),
-            &window.get_all_keys_down(),
+            &pressed_keys,
             delta_time,
             &clipboard_data,
         );
-        gui.draw_on_buffer(buffer);
+
+        // let gui_output = gui.update(
+        //     mouse_pos,
+        //     mouse_scroll,
+        //     window.is_mouse_down(mirl::platform::MouseButton::Left),
+        //     window.is_mouse_down(mirl::platform::MouseButton::Middle),
+        //     window.is_mouse_down(mirl::platform::MouseButton::Right),
+        //     &pressed_keys,
+        //     delta_time,
+        //     &clipboard_data,
+        // );
+
+        // let gui_output = gui_output
+        //     | gui2.update(
+        //         mouse_pos,
+        //         mouse_scroll,
+        //         window.is_mouse_down(mirl::platform::MouseButton::Left),
+        //         window.is_mouse_down(mirl::platform::MouseButton::Middle),
+        //         window.is_mouse_down(mirl::platform::MouseButton::Right),
+        //         &pressed_keys,
+        //         delta_time,
+        //         &clipboard_data,
+        //     );
+        // gui.draw_on_buffer(buffer);
+        // gui2.draw_on_buffer(buffer);
+        window_manager.draw_on_buffer(buffer);
 
         request_clipboard_data = gui_output.request_clipboard_data;
 

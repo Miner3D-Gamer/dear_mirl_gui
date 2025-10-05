@@ -3,7 +3,7 @@ use mirl::{
     graphics::{rgba_to_u32, rgba_u32_to_u32},
 };
 
-use crate::{Buffer, CursorStyle, DearMirlGuiModule, render};
+use crate::{render, Buffer, CursorStyle, DearMirlGuiModule, FocusTaken, InsertionMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A slider/progress module
@@ -17,7 +17,7 @@ pub struct Slider<ProgressType: num_traits::Float> {
     /// Width of the slider thumb
     pub slider_width: usize,
     /// If the slider thumb is currently being dragged
-    pub dragging: bool,
+    pub dragging: usize,
     /// If the slider should wrap around instead of stopping at the ends
     pub wrap: bool,
     /// A small value so progress doesn't flip between 0.0 and 1.0
@@ -34,6 +34,8 @@ impl<ProgressType: num_traits::Float> Slider<ProgressType> {
         // normalized_range: bool,
         // min: Option<isize>,
         // max: Option<isize>,
+        // visual_min: Option<isize>,
+        // visual_max: Option<isize>,
         progress: Option<ProgressType>,
         slider_width: Option<usize>,
         wrap: bool,
@@ -60,10 +62,10 @@ impl<ProgressType: num_traits::Float> Slider<ProgressType> {
             // }),
             // normalized_range,
             slider_width: slider_width.unwrap_or(height / 5),
-            dragging: false,
+            dragging: 0,
             wrap,
             eps,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
 }
@@ -74,7 +76,8 @@ impl<
         + num_traits::NumCast
         + num_traits::ConstOne
         + num_traits::ConstZero
-        + 'static,
+        + 'static
+        + std::marker::Send,
 > DearMirlGuiModule for Slider<ProgressType>
 {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
@@ -84,9 +87,16 @@ impl<
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         self.height as isize
     }
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
     #[allow(clippy::unwrap_used)] // It ain't gonna crash
     #[allow(clippy::too_many_lines)] // Really? What.
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         #[inline(always)]
         #[allow(clippy::inline_always)]
         const fn draw_or_invert(original: u32, under: u32) -> u32 {
@@ -99,7 +109,7 @@ impl<
         let buffer = Buffer::new_empty_with_color(
             self.width,
             self.height,
-            formatting.secondary_color,
+            formatting.foreground_color,
         );
 
         let position = mirl::math::interpolate(
@@ -149,14 +159,18 @@ impl<
             draw_or_invert,
         );
 
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
     #[allow(clippy::unwrap_used)] // It ain't gonna crash
-    fn update(&mut self, info: &crate::ModuleInputs) -> crate::GuiOutput {
-        if info.focus_taken {
-            return crate::GuiOutput::default(false);
+    fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
+        if info.focus_taken.is_focus_taken() {
+            return crate::GuiOutput::empty();
         }
-        let mut took_focus = self.dragging;
+        let mut took_focus = if self.dragging == info.container_id {
+            FocusTaken::FunctionallyTaken
+        } else {
+            FocusTaken::FocusFree
+        };
 
         let mut cursor_style: Option<CursorStyle> = None;
         if let Some(mouse_pos) = info.mouse_pos {
@@ -176,12 +190,14 @@ impl<
             );
             let mouse_collides_with_slider_handle =
                 slider_collision.does_area_contain_point(mouse_pos);
+
             let mut new_progress = self.progress;
-            if (self.dragging && info.mouse_info.left.down)
+            if (self.dragging == info.container_id && info.mouse_info.left.down)
                 || (info.mouse_info.left.clicked
-                    && mouse_collides_with_slider_handle)
+                    && mouse_collides_with_slider_handle
+                    && self.dragging == 0)
             {
-                self.dragging = true;
+                self.dragging = info.container_id;
                 cursor_style = Some(CursorStyle::ResizeHorizontally);
                 new_progress = super::misc::adjust_progress_by_mouse(
                     self.progress,
@@ -190,9 +206,9 @@ impl<
                 );
             } else if mouse_collides_with_slider_handle {
                 cursor_style = Some(CursorStyle::CenteredPointer);
-                self.dragging = false;
+                self.dragging = 0;
             } else {
-                self.dragging = false;
+                self.dragging = 0;
             }
             if mirl::math::collision::Rectangle::<_, false>::new(
                 0,
@@ -204,19 +220,20 @@ impl<
                 && let Some(mouse_scroll) = info.mouse_scroll
             {
                 if mouse_scroll.0 != 0 {
+                    took_focus = FocusTaken::FunctionallyTaken;
                     new_progress = new_progress
                         + num_traits::NumCast::from(
                             0.05 * mouse_scroll.0.sign() as f32,
                         )
                         .unwrap(); //(mouse_scroll.0 as f32 / 100.0)
-                } else {
+                } else if mouse_scroll.1 != 0 {
+                    took_focus = FocusTaken::FunctionallyTaken;
                     new_progress = new_progress
                         + num_traits::NumCast::from(
                             0.05 * mouse_scroll.1.sign() as f32,
                         )
                         .unwrap(); //(mouse_scroll.1 as f32 / 100.0)
                 }
-                took_focus = true;
             }
             if self.wrap {
                 let eps = self.eps;
@@ -229,8 +246,8 @@ impl<
                     p
                 };
             }
-            if self.dragging {
-                self.needs_redraw = true.into();
+            if self.dragging > 0 {
+                self.needs_redraw = std::cell::Cell::new(true);
             }
             self.progress =
                 new_progress.clamp(ProgressType::ZERO, ProgressType::ONE);

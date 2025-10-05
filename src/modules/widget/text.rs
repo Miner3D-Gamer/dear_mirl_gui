@@ -1,4 +1,4 @@
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
 
 #[derive(Debug, Clone, PartialEq)]
 /// A simple text module
@@ -20,19 +20,26 @@ impl Text {
             text: text.to_string(),
             height: height as f32,
             color: color.unwrap_or(mirl::graphics::color_presets::WHITE),
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
     /// Set the text the module is displaying (tip: [`format!()`](format!) exists)
     pub fn set_text(&mut self, text: String) {
         self.text = text;
-        self.needs_redraw = true.into();
+        self.needs_redraw = std::cell::Cell::new(true);
     }
 }
 
 impl DearMirlGuiModule for Text {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         let width = mirl::render::get_text_width(
             &self.text,
             self.height,
@@ -52,7 +59,7 @@ impl DearMirlGuiModule for Text {
             self.height,
             &formatting.font,
         );
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
     fn get_height(&self, formatting: &crate::Formatting) -> isize {
         mirl::render::get_text_height(&self.text, self.height, &formatting.font)
@@ -62,8 +69,8 @@ impl DearMirlGuiModule for Text {
         mirl::render::get_text_width(&self.text, self.height, &formatting.font)
             as isize
     }
-    fn update(&mut self, _info: &crate::ModuleInputs) -> crate::GuiOutput {
-        crate::GuiOutput::default(false)
+    fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
+        crate::GuiOutput::empty()
     }
 
     fn need_redraw(&self) -> bool {

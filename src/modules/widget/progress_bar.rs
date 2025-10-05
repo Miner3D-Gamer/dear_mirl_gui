@@ -4,7 +4,7 @@ use mirl::{
     math::interpolate,
 };
 
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{render, Buffer, DearMirlGuiModule, InsertionMode};
 
 #[derive(Debug, Clone, PartialEq)]
 /// A Progress Bar module
@@ -38,7 +38,7 @@ impl ProgressBar {
             height,
             progress: progress.unwrap_or(0.0),
             progress_bar_vertical,
-            needs_redraw: false.into(),
+            needs_redraw: std::cell::Cell::new(false),
             previous_progress: 0.0,
         }
     }
@@ -52,8 +52,15 @@ impl DearMirlGuiModule for ProgressBar {
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         self.height as isize
     }
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
     //#[allow(clippy::too_many_lines)] // Really? What.
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         #[allow(clippy::inline_always)]
         #[inline(always)]
         const fn draw_or_invert(original: u32, under: u32) -> u32 {
@@ -67,7 +74,7 @@ impl DearMirlGuiModule for ProgressBar {
         let buffer = Buffer::new_empty_with_color(
             self.width,
             self.height,
-            formatting.secondary_color,
+            formatting.foreground_color,
         );
 
         let (width, height, y_pos) = if self.progress_bar_vertical {
@@ -99,7 +106,7 @@ impl DearMirlGuiModule for ProgressBar {
             width,
             height,
             mirl::graphics::adjust_brightness_hsl_of_rgb(
-                formatting.secondary_color,
+                formatting.foreground_color,
                 color_change,
             ),
         );
@@ -135,15 +142,15 @@ impl DearMirlGuiModule for ProgressBar {
             draw_or_invert,
         );
 
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
     #[allow(clippy::float_cmp)]
-    fn update(&mut self, _info: &crate::ModuleInputs) -> crate::GuiOutput {
+    fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         if self.progress != self.previous_progress {
             self.needs_redraw.set(true);
             self.previous_progress = self.progress;
         }
-        crate::GuiOutput::default(false)
+        crate::GuiOutput::empty()
     }
     fn need_redraw(&self) -> bool {
         if self.needs_redraw.get() {

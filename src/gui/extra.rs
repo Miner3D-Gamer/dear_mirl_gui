@@ -1,12 +1,16 @@
 use std::any::TypeId;
 
-use crate::{AnyCasting, Buffer, DearMirlGuiModule};
+use crate::{AnyCasting, Buffer, DearMirlGuiModule, InsertionMode};
 #[allow(clippy::type_complexity)]
 /// A virtual `DearMirlGuiModule` - MAGIC!
 #[derive(Debug, Clone, Copy)]
 pub struct ModuleVTable {
     /// See [`crate::DearMirlGuiModule`] for documentation
-    pub draw: fn(&dyn DearMirlGuiModule, &crate::Formatting) -> Buffer,
+    pub draw: fn(
+        &mut dyn DearMirlGuiModule,
+        &crate::Formatting,
+        &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode),
     /// See [`crate::DearMirlGuiModule`] for documentation
     pub get_height: fn(&dyn DearMirlGuiModule, &crate::Formatting) -> isize,
     /// See [`crate::DearMirlGuiModule`] for documentation
@@ -14,20 +18,23 @@ pub struct ModuleVTable {
     /// See [`crate::DearMirlGuiModule`] for documentation
     pub update: fn(
         &mut dyn DearMirlGuiModule,
-        inputs: &crate::ModuleInputs,
+        inputs: &crate::ModuleUpdateInfo,
     ) -> crate::GuiOutput,
     /// See [`crate::DearMirlGuiModule`] for documentation
     pub need_redraw: fn(&mut dyn DearMirlGuiModule) -> bool,
     /// See [`crate::DearMirlGuiModule`] for documentation
-    pub get_next_offset: fn(
+    pub modify_offset_cursor: fn(
         &mut dyn DearMirlGuiModule,
-        &indexmap::IndexMap<String, ModuleContainer>,
-        usize,
+        &[ModuleContainer],
+        &Vec<usize>,
         &crate::Formatting,
-    ) -> (isize, isize),
+        (&mut isize, &mut isize),
+    ),
     /// See [`crate::DearMirlGuiModule`] for documentation
     pub apply_new_formatting:
         fn(&mut dyn DearMirlGuiModule, formatting: &crate::Formatting),
+    /// See [`crate::DearMirlGuiModule`] for documentations
+    pub set_need_redraw: fn(&mut dyn DearMirlGuiModule, Vec<(usize, bool)>),
 }
 
 impl ModuleVTable {
@@ -35,16 +42,28 @@ impl ModuleVTable {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            draw: |item, formatting| item.draw(formatting),
+            draw: |item, formatting, info| item.draw(formatting, info),
             get_height: |item, formatting| item.get_height(formatting),
             get_width: |item, formatting| item.get_width(formatting),
             update: |item, inputs| item.update(inputs),
             need_redraw: |item| item.need_redraw(),
-            get_next_offset: |item, modules, current_idx, formatting| {
-                item.get_next_offset(modules, current_idx, formatting)
+            modify_offset_cursor: |item,
+                                   modules,
+                                   current_idx,
+                                   formatting,
+                                   current| {
+                item.modify_offset_cursor(
+                    modules,
+                    current_idx,
+                    formatting,
+                    current,
+                );
             },
             apply_new_formatting: |item, modules| {
                 item.apply_new_formatting(modules);
+            },
+            set_need_redraw: |item, redraw| {
+                item.set_need_redraw(redraw);
             },
         }
     }
@@ -67,6 +86,9 @@ pub struct ModuleContainer {
     /// The type name for debug purposes
     pub type_name: &'static str,
 }
+unsafe impl std::marker::Sync for ModuleContainer {}
+#[allow(clippy::non_send_fields_in_send_ty)]
+unsafe impl std::marker::Send for ModuleContainer {}
 
 impl ModuleContainer {
     /// Create a new module container
@@ -119,8 +141,12 @@ impl ModuleContainer {
     }
     #[must_use]
     /// See [`crate::DearMirlGuiModule`] for documentation
-    pub fn draw(&self, formatting: &crate::Formatting) -> Buffer {
-        self.with_ref(|item| item.draw(formatting))
+    pub fn draw(
+        &self,
+        formatting: &crate::Formatting,
+        info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
+        self.with_ref_mut(|item| item.draw(formatting, info))
     }
 
     #[must_use]
@@ -136,25 +162,29 @@ impl ModuleContainer {
     }
     /// See [`crate::DearMirlGuiModule`] for documentation
     #[must_use]
-    pub fn update(&self, info: &crate::ModuleInputs) -> crate::GuiOutput {
+    pub fn update(&self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         let mut borrowed = self.item.borrow_mut();
         (self.vtable.update)(&mut **borrowed, info)
     }
     /// See [`crate::DearMirlGuiModule`] for documentation
-    #[must_use]
-    pub fn get_next_offset(
+    pub fn modify_offset_cursor(
         &self,
-        modules: &indexmap::IndexMap<String, Self>,
-        current_idx: usize,
+        modules: &[Self],
+        used_idx: &Vec<usize>,
         formatting: &crate::Formatting,
-    ) -> (isize, isize) {
+        current: (&mut isize, &mut isize),
+    ) {
         self.with_ref(|item| {
-            item.get_next_offset(modules, current_idx, formatting)
-        })
+            item.modify_offset_cursor(modules, used_idx, formatting, current);
+        });
     }
     /// See [`crate::DearMirlGuiModule`] for documentation
     #[must_use]
     pub fn need_redraw(&self) -> bool {
         self.with_ref(|item| item.need_redraw())
+    }
+    /// See [`crate::DearMirlGuiModule`] for documentation
+    pub fn set_need_redraw(&self, redraw: Vec<(usize, bool)>) {
+        self.with_ref(|item| item.set_need_redraw(redraw));
     }
 }

@@ -4,6 +4,8 @@ pub mod button;
 pub mod check_box;
 /// Display an image/buffer
 pub mod image;
+/// Its an image you can click, a button with fancy visuals
+pub mod image_button;
 /// Progress bar
 pub mod progress_bar;
 /// Button Selection module including a radio button option
@@ -13,23 +15,28 @@ pub mod sliders;
 /// Text module
 pub mod text;
 /// A simple text input module
-/// 
+///
 /// This is currently in a very basic state and will be rewritten in the future
 pub mod text_input;
-/// A sub window inside your window, idk why you would want this recursion but it's dynamic enough to support it so why not?
-/// 
-/// Can be used as a collapsable header as well as scrollable container
-pub mod window_emulator;
+/// A crank can be cranked to get a rotation
+pub mod crank;
+/// Display numbers in a seven segment display style
+pub mod number_display;
+/// A lever you can vertically drag that can be either on or off
+pub mod lever;
 
 pub use button::Button;
 pub use check_box::CheckBox;
 pub use image::Image;
+pub use image_button::ImageButton;
 pub use progress_bar::ProgressBar;
 pub use selection::Selection;
 pub use sliders::Slider;
 pub use text::Text;
 pub use text_input::TextInput;
-pub use window_emulator::WindowEmulator;
+pub use crank::Crank;
+pub use number_display::NumberDisplay;
+pub use lever::Lever;
 
 /// Misc function the modules use
 pub mod misc;

@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 
 
-mirl = { version = ">=4.2.0", default-features = false, features = [
+mirl = { version = ">=4.3.0", default-features = false, features = [
     "font_support",
     "svg_support",
     "keycode_support",
@@ -21,5 +21,11 @@ num-traits = "0.2"
 default = []
 #BAD_APPLE = []
 draw_safe = []
+draw_debug = []
+focus_debug = []
 
-debug-window = ["mirl/glfw_backend", "mirl/system"]
+debug-window = [
+    "mirl/minifb_backend",
+    "mirl/system",
+    "mirl/cursor_show_hotspot",
+]

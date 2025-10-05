@@ -3,7 +3,7 @@ use mirl::{
     platform::CursorStyle,
 };
 
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, render};
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A check box, what more to describe?
 pub struct CheckBox {
@@ -42,7 +42,7 @@ impl CheckBox {
                 ])
             }),
             margin: height / 10,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
     #[must_use]
@@ -58,7 +58,7 @@ impl CheckBox {
                 super::misc::draw_cross(anti_margin, 2),
             ]),
             margin: height / 10,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
     #[must_use]
@@ -78,7 +78,7 @@ impl CheckBox {
                 ),
             ]),
             margin: height / 10,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
     /// Checks if the box is un-ticked and inverts the result
@@ -93,6 +93,9 @@ impl DearMirlGuiModule for CheckBox {
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         self.height as isize
     }
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
     fn get_width(&self, formatting: &crate::Formatting) -> isize {
         (self.height
             + self.margin
@@ -102,7 +105,11 @@ impl DearMirlGuiModule for CheckBox {
                 &formatting.font,
             ) as usize) as isize
     }
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         let buffer =
             Buffer::new_empty(self.get_width(formatting) as usize, self.height);
         render::draw_rectangle::<{ crate::DRAW_SAFE }>(
@@ -111,7 +118,7 @@ impl DearMirlGuiModule for CheckBox {
             0,
             self.height as isize,
             self.height as isize,
-            formatting.secondary_color,
+            formatting.foreground_color,
         );
 
         render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
@@ -128,24 +135,24 @@ impl DearMirlGuiModule for CheckBox {
 
         let to_draw = &self.states[self.checked];
         if buffer.width == anti_margin && buffer.height == anti_margin {
-            render::draw_buffer_on_buffer_1_to_1::<true, true, true>(
+            render::draw_buffer_on_buffer_1_to_1::<true, true, false, true>(
                 &buffer,
                 &Buffer::generate_fallback(anti_margin, anti_margin, 2),
                 (margin, margin).div((2, 2)).tuple_2_into(),
             );
         } else {
-            render::draw_buffer_on_buffer_1_to_1::<true, true, true>(
+            render::draw_buffer_on_buffer_1_to_1::<true, true, false,true>(
                 &buffer,
                 to_draw,
                 (margin, margin).div((2, 2)).tuple_2_into(),
             );
         }
 
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
-    fn update(&mut self, info: &crate::ModuleInputs) -> crate::GuiOutput {
-        if info.focus_taken {
-            return crate::GuiOutput::default(false);
+    fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
+        if info.focus_taken.is_focus_taken() {
+            return crate::GuiOutput::empty();
         }
         let collision: mirl::math::collision::Rectangle<_, true> =
             mirl::math::collision::Rectangle::new(
@@ -158,12 +165,13 @@ impl DearMirlGuiModule for CheckBox {
             let collides = collision.does_area_contain_point(mouse_pos);
             if collides {
                 let cursor_style = Some(CursorStyle::Pointer);
-                let mut focus_taken = false;
-                if info.mouse_info.left.clicked {
-                    focus_taken = true;
+                let focus_taken = if info.mouse_info.left.clicked {
                     self.needs_redraw.set(true);
                     self.checked = (self.checked + 1) % self.states.len();
-                }
+                    FocusTaken::FunctionallyTaken
+                } else {
+                    FocusTaken::VisuallyTaken
+                };
 
                 return crate::GuiOutput {
                     new_cursor_style: cursor_style,
@@ -176,7 +184,7 @@ impl DearMirlGuiModule for CheckBox {
                 };
             }
         }
-        crate::GuiOutput::default(false)
+        crate::GuiOutput::empty()
     }
     fn need_redraw(&self) -> bool {
         if self.needs_redraw.get() {

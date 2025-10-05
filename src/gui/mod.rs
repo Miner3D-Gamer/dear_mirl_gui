@@ -5,7 +5,7 @@
 // 5: Trying to compress 6.5k images into a reasonable size
 // 6: "
 // 7: "
-// 8: Added better formatting, grouped buttons/radio buttons, line divider, and anti new line
+// 8: Gave up. Added better formatting, grouped buttons/radio buttons, line divider, and anti new line
 // 9: None
 // 10: Alright this is getting too stupid for documentation
 // 11: None
@@ -13,9 +13,16 @@
 // 13: Made scrolling a little more intuitive, de-hardcoded some values bc why not, polished some visuals
 // 14: Improved formatting once more, fixed caching which improves performance by 5%-8% in the example window; it's not a lot but sure
 // The Next two weeks: Add keybinds, add _all_ keybind functionality
+// The week after that: Added new backend
+// Week 7: Added crank for rotation, added lever for boolean input. Fixed a bunch of smaller issues
+
+// Well, that took a little longer than expected. 7 Weeks to be exact.
+// The lib isn't perfect, or tbh that great overall, but it works for my usecase. And as long as no other person uses this, I have no need to fix it
+
 // Idea: Instead of each module that has a Buffer holding it's own data, there is a global storage each module can request/upload textures to
 
-mod extra;
+/// Magic stuff to make all modules work in harmony
+pub mod extra;
 
 pub use extra::{ModuleContainer, ModuleVTable};
 use mirl::{
@@ -27,12 +34,8 @@ use mirl::{
     render,
 };
 
-type BufferAndOffset = (std::rc::Rc<Buffer>, (isize, isize));
+use crate::*;
 
-use crate::{
-    ButtonState, DearMirlGuiModule, Formatting, GuiOutput, GuiReturnsModule,
-    ModuleInputs, MouseData,
-};
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)] // This ain't no state machine!
 /// A single window
@@ -48,9 +51,9 @@ pub struct DearMirlGui<const FAST: bool, const USE_CACHE: bool> {
     /// Y position on screen
     pub y: isize,
     /// Added modules
-    pub modules: indexmap::IndexMap<String, ModuleContainer>,
+    pub modules: Vec<String>,
     /// Toolbar modules - Arranged horizontally instead of vertically
-    pub toolbar_modules: indexmap::IndexMap<String, ModuleContainer>,
+    pub toolbar_modules: Vec<String>,
     /// Last saved mouse position - is [`(isize::MIN, isize::MIN)`](isize::MIN) when invalidated
     pub last_mouse_pos: (isize, isize),
     /// If the left mouse button was pressed last frame
@@ -65,22 +68,14 @@ pub struct DearMirlGui<const FAST: bool, const USE_CACHE: bool> {
     pub at_corner: u8,
     /// If the user is currently dragging the window
     pub dragging: bool,
-    /// The color of the menu title
-    /// The main color of the window, possibly used by modules if not custom color is defined
-    /// The secondary color of the window, possibly used by modules if not custom color is defined
-    /// Vertical margin between the modules and the edge
-    /// Horizontal margin between modules and the edge
-    pub formatting: Formatting,
     /// Just the menu height, windows cannot be vertically smaller then this
     pub menu_height: usize,
     /// The minimum menu width - Menus cannot be horizontally smaller than this
     pub min_width: usize,
     /// If the window should be collapsed
     pub collapsed: bool,
-    /// A cache so modules don't need to redraw themselves every frame
-    pub cache: Vec<Option<BufferAndOffset>>,
-    /// A cache so toolbar modules don't need to redraw themselves every frame
-    pub toolbar_cache: Vec<Option<std::rc::Rc<Buffer>>>,
+    // /// A cache so toolbar modules don't need to redraw themselves every frame
+    // pub toolbar_cache: Vec<Option<std::rc::Rc<Buffer>>>,
     /// If the collapse button collision should be circular
     pub collapse_button_collision_is_circle: bool,
     /// If there have been any changes to the gui
@@ -101,9 +96,13 @@ pub struct DearMirlGui<const FAST: bool, const USE_CACHE: bool> {
     pub vertical_scroll_multiplier_x: isize,
     /// When scrolling vertically, by how much should the y be multiplied
     pub vertical_scroll_multiplier_y: isize,
+    /// NOT RECOMMENDED TO EDIT
+    pub id: usize,
+    /// A small cache for the total size - Not always 100% accurate
+    pub size_to_see_all_modules: Option<(isize, isize)>,
 }
 #[allow(clippy::struct_excessive_bools, missing_docs)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 /// A boolean for each simple Direction
 pub struct Directions {
     pub top: bool,
@@ -178,20 +177,8 @@ impl Directions {
 }
 
 impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
-    /// The margin between individual modules and the edge
-    pub const DEFAULT_HORIZONTAL_MARGIN: usize = 5;
-    /// The margin between individual modules and the edge
-    pub const DEFAULT_VERTICAL_MARGIN: usize = 5;
     /// The height of the Menu/Text on the menu -> The colored part above the module area
     pub const DEFAULT_MENU_HEIGHT: usize = 20;
-    /// The color of the background
-    pub const DEFAULT_BACKGROUND_COLOR: u32 =
-        mirl::graphics::rgba_to_u32(10, 5, 20, 255);
-    /// The color of the stuff that neither the background nor text
-    pub const DEFAULT_STUFF_COLOR: u32 =
-        mirl::graphics::rgba_to_u32(40, 30, 100, 255);
-    /// The color of the text
-    pub const DEFAULT_TEXT_COLOR: u32 = mirl::graphics::color_presets::WHITE;
     /// By how much the X part of the mouse scroll should be multiplied with when scrolling vertically
     pub const DEFAULT_VERTICAL_SCROLL_X_MULTIPLIER: isize = 1;
     /// By how much the Y part of the mouse scroll should be multiplied with when scrolling vertically
@@ -210,16 +197,11 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         y: isize,
         width: usize,
         height: usize,
-        modules: Option<indexmap::IndexMap<String, ModuleContainer>>,
-        toolbar_modules: Option<indexmap::IndexMap<String, ModuleContainer>>,
+        modules: &Option<Vec<String>>,
+        toolbar_modules: &Option<Vec<String>>,
         font: &fontdue::Font,
-        horizontal_margin: Option<usize>,
-        vertical_margin: Option<usize>,
         menu_height: Option<usize>,
         min_width: Option<usize>,
-        main_color: Option<u32>,
-        secondary_color: Option<u32>,
-        menu_text_color: Option<u32>,
         allow_resizing_in_directions: Option<Directions>,
         allow_dragging: bool,
         collapsed: bool,
@@ -244,21 +226,6 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             resizing: false,
             at_corner: u8::MAX,
             dragging: false,
-            formatting: Formatting {
-                font: font.clone(),
-                main_color: main_color
-                    .unwrap_or(Self::DEFAULT_BACKGROUND_COLOR),
-                secondary_color: secondary_color
-                    .unwrap_or(Self::DEFAULT_STUFF_COLOR),
-                text_color: menu_text_color.unwrap_or(Self::DEFAULT_TEXT_COLOR),
-                misc_ui_color: 0,
-                horizontal_margin: horizontal_margin
-                    .unwrap_or(Self::DEFAULT_HORIZONTAL_MARGIN)
-                    / 2,
-                vertical_margin: vertical_margin
-                    .unwrap_or(Self::DEFAULT_VERTICAL_MARGIN)
-                    / 2,
-            },
             menu_height,
             min_width: min_width.unwrap_or_else(|| {
                 mirl::render::get_text_width(title, menu_height as f32, font)
@@ -266,11 +233,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     + menu_height
             }),
             collapsed,
-            cache: None.repeat_value(modules.unwrap_or_default().len()),
-            toolbar_cache: None
-                .repeat_value(toolbar_modules.unwrap_or_default().len()),
             collapse_button_collision_is_circle: false,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
             resizing_allowed_in_directions: allow_resizing_in_directions
                 .unwrap_or(Directions::all_true()),
             allow_dragging,
@@ -284,6 +248,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                 .unwrap_or(Self::DEFAULT_VERTICAL_SCROLL_X_MULTIPLIER),
             vertical_scroll_multiplier_y: vertical_scroll_multiplier_y
                 .unwrap_or(Self::DEFAULT_VERTICAL_SCROLL_Y_MULTIPLIER),
+            id: get_available_id(),
+
+            size_to_see_all_modules: None,
         }
     }
 
@@ -297,13 +264,14 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         width: usize,
         height: usize,
         font: &fontdue::Font,
+        modules: &[String],
     ) -> Self {
         Self {
             title: title.to_string(),
             width,
             height,
-            modules: indexmap::IndexMap::new(),
-            toolbar_modules: indexmap::IndexMap::new(),
+            modules: modules.to_vec(),
+            toolbar_modules: Vec::new(),
             last_mouse_pos: (0, 0),
             last_left_mouse_down: false,
             last_middle_mouse_down: false,
@@ -313,15 +281,6 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             resizing: false,
             at_corner: u8::MAX,
             dragging: false,
-            formatting: Formatting {
-                font: font.clone(),
-                main_color: Self::DEFAULT_BACKGROUND_COLOR,
-                secondary_color: Self::DEFAULT_STUFF_COLOR,
-                text_color: Self::DEFAULT_TEXT_COLOR,
-                misc_ui_color: 0,
-                horizontal_margin: Self::DEFAULT_HORIZONTAL_MARGIN / 2,
-                vertical_margin: Self::DEFAULT_VERTICAL_MARGIN / 2,
-            },
             menu_height: Self::DEFAULT_MENU_HEIGHT,
             min_width: render::get_text_width(
                 title,
@@ -330,10 +289,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             ) as usize
                 + Self::DEFAULT_MENU_HEIGHT,
             collapsed: false,
-            cache: Vec::new(),
-            toolbar_cache: Vec::new(),
             collapse_button_collision_is_circle: false,
-            needs_redraw: false.into(),
+            needs_redraw: std::cell::Cell::new(false),
             allow_dragging: true,
             resizing_allowed_in_directions: Directions::all_true(),
             scroll_offset_x: 0,
@@ -346,28 +303,19 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                 Self::DEFAULT_VERTICAL_SCROLL_X_MULTIPLIER,
             vertical_scroll_multiplier_y:
                 Self::DEFAULT_VERTICAL_SCROLL_Y_MULTIPLIER,
+            id: get_available_id(),
+            size_to_see_all_modules: None,
         }
     }
     /// Update the min width based on the length of the window title
     pub fn update_min_width(&mut self) {
+        let formatting = get_formatting();
         self.min_width = render::get_text_width(
             &self.title,
             self.menu_height as f32,
-            &self.formatting.font,
+            &formatting.font,
         ) as usize
             + self.menu_height;
-    }
-    /// Checks if any module needs to be redrawn
-    pub fn needs_redraw(&self) -> bool {
-        if self.needs_redraw.get() {
-            return true;
-        }
-        for (_, module) in &self.modules {
-            if module.need_redraw() {
-                return true;
-            }
-        }
-        false
     }
     /// Get the current height of the window
     pub const fn get_height(&self) -> usize {
@@ -382,195 +330,65 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         self.width
     }
 
-    /// Replace all cache modules with None
-    pub fn reset_cache(&mut self) {
-        self.cache = None.repeat_value(self.cache.len());
-    }
-    // /// Move the window relative to it's current position
-    // pub const fn move_by(&mut self, xy: (isize, isize)) {
-    //     self.x += xy.0;
-    //     self.y += xy.1;
-    // }
-
     /// Add a module with type preservation
-    pub fn add_module<T: DearMirlGuiModule + 'static>(
+    pub fn add_module<T: DearMirlGuiModule + 'static, Type>(
         &mut self,
-        name: &str,
-        module: T,
+        name: &ModulePath<Type>,
     ) {
-        self.modules.insert(name.to_string(), ModuleContainer::new(module));
-        self.cache.push(None);
+        self.modules.push(name.id());
+        self.size_to_see_all_modules = None;
     }
     /// Remove a module
-    pub fn remove_module<T: DearMirlGuiModule + 'static>(
-        &mut self,
-        name: &String,
-    ) {
-        let index = self.modules.get_index_of(name);
+    pub fn remove_module(&mut self, name: &String) {
+        let index = self.modules.find(name);
         if let Some(idx) = index {
-            self.modules.shift_remove_index(idx);
-            self.cache.remove(idx);
+            self.modules.remove(idx);
         }
+        self.size_to_see_all_modules = None;
     }
 
     /// Add a module with type preservation to the toolbar
-    pub fn add_toolbar_module<T: DearMirlGuiModule + 'static>(
-        &mut self,
-        name: &str,
-        module: T,
-    ) {
-        self.toolbar_modules
-            .insert(name.to_string(), ModuleContainer::new(module));
-        self.toolbar_cache.push(None);
+    pub fn add_toolbar_module(&mut self, name: &str) {
+        self.toolbar_modules.push(name.to_string());
     }
     /// Remove a toolbar module
-    pub fn remove_toolbar_module<T: DearMirlGuiModule + 'static>(
-        &mut self,
-        name: &str,
-    ) {
-        let index = self.toolbar_modules.get_index_of(&name.to_string());
+    pub fn remove_toolbar_module(&mut self, name: &String) {
+        let index = self.toolbar_modules.find(name);
         if let Some(idx) = index {
-            self.toolbar_modules.shift_remove_index(idx);
-            self.toolbar_cache.remove(idx);
+            self.toolbar_modules.remove(idx);
         }
     }
 
-    /// Get typed access to a module using closure (immutable)
-    pub fn get_module<R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&dyn DearMirlGuiModule) -> R,
-    ) -> Option<R> {
-        self.modules.get(name).map(|module| module.with_ref(f))
-    }
-
-    /// Get typed access to a module using closure (mutable)
-    pub fn get_module_mut<R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&mut dyn DearMirlGuiModule) -> R,
-    ) -> Option<R> {
-        self.modules.get(name).map(|module| module.with_ref_mut(f))
-    }
-
-    /// Get typed access to a toolbar module using closure (immutable)
-    pub fn with_toolbar_module<R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&dyn DearMirlGuiModule) -> R,
-    ) -> Option<R> {
-        self.toolbar_modules.get(name).map(|module| module.with_ref(f))
-    }
-
-    /// Get typed access to a toolbar module using closure (mutable)
-    pub fn with_toolbar_module_mut<R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&mut dyn DearMirlGuiModule) -> R,
-    ) -> Option<R> {
-        self.needs_redraw.set(true);
-        self.toolbar_modules.get(name).map(|module| module.with_ref_mut(f))
-    }
-
     /// Automatically draw the window onto a `mirl::platform::Buffer`
+    ///
+    /// If nothing is showing up, maybe check the size if the gui
     pub fn draw_on_buffer(&mut self, buffer: &Buffer) {
-        let to_draw = self.draw();
+        #[cfg(feature = "draw_debug")]
+        println!("Before Drawing");
+        let to_draw = self.render();
+        #[cfg(feature = "draw_debug")]
+        println!(
+            "x{} y{} w{} h{}",
+            self.x, self.y, to_draw.width, to_draw.height
+        );
         if buffer
             .create_collision_isize::<false>(0, 0)
             .does_area_fully_include_other_area(
                 &to_draw.create_collision_isize(self.x, self.y),
             )
         {
-            render::draw_buffer_on_buffer_1_to_1::<false, false, false>(
+            render::draw_buffer_on_buffer_1_to_1::<false, false, false, false>(
                 buffer,
                 &to_draw,
                 (self.x, self.y),
             );
         } else {
-            render::draw_buffer_on_buffer_1_to_1::<true, false, false>(
+            render::draw_buffer_on_buffer_1_to_1::<true, false, false, false>(
                 buffer,
                 &to_draw,
                 (self.x, self.y),
             );
         }
-    }
-    /// Usage Example:
-    /// ```ignore
-    ///                                 // Module Type, Function Return, Module ID, Function
-    ///                                 // v                       v     v            v
-    /// let progress = gui.get_module_as::<crate::modules::Slider, f32> ("module_id", |slider| slider.progress);
-    /// println!("Current progress: {progress}");
-    /// ```
-    #[must_use]
-    pub fn get_module_as<T: 'static, R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&T) -> R,
-    ) -> GuiReturnsModule<R> {
-        self.needs_redraw.set(true);
-
-        let module = self.get_module(name, |module| {
-            (
-                module.as_any().downcast_ref::<T>().map(f),
-                std::any::type_name::<T>(),
-                module.what_am_i(),
-            )
-        });
-        module.map_or_else(
-            || GuiReturnsModule::UnableToFindID(name.to_string()),
-            |value| {
-                let (val, wrongly_used, correct) = value;
-                val.map_or_else(
-                    || GuiReturnsModule::CastingAsWrongModule {
-                        wrong: wrongly_used.to_string(),
-                        correct: correct.to_string(),
-                        id: name.to_string(),
-                    },
-                    |output| GuiReturnsModule::AllGood(output),
-                )
-            },
-        )
-    }
-
-    /// Usage Example:
-    /// ```ignore
-    ///                   // Module Type, Function Return, Module ID, Function
-    ///                   // v                       v     v           v
-    /// .get_module_as_mut::<crate::modules::Slider, ()>  ("slider_1", |slider| {
-    ///        slider.progress += delta_time as f32 / 10.0;
-    ///        slider.progress = slider.progress.clamp(0.0, 1.0);
-    ///        if slider.progress == 1.0 {
-    ///            slider.progress = 0.0
-    ///        }
-    ///    })
-    /// ```
-    #[must_use]
-    pub fn get_module_as_mut<T: 'static, R>(
-        &self,
-        name: &str,
-        f: impl FnOnce(&mut T) -> R,
-    ) -> GuiReturnsModule<R> {
-        let module = self.get_module_mut(name, |module| {
-            (
-                module.as_any_mut().downcast_mut::<T>().map(f),
-                std::any::type_name::<T>(),
-                module.what_am_i(),
-            )
-        });
-        module.map_or_else(
-            || GuiReturnsModule::UnableToFindID(name.to_string()),
-            |value| {
-                let (val, wrongly_used, correct) = value;
-                val.map_or_else(
-                    || GuiReturnsModule::CastingAsWrongModule {
-                        wrong: wrongly_used.to_string(),
-                        correct: correct.to_string(),
-                        id: name.to_string(),
-                    },
-                    |output| GuiReturnsModule::AllGood(output),
-                )
-            },
-        )
     }
     fn draw_menu(
         &self,
@@ -579,51 +397,76 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         collapse_button_size: f64,
         collapse_button_color_change: f32,
     ) {
+        const DRAW_MENU_ID: bool = true;
+        let formatting = get_formatting();
         render::draw_rectangle::<{ crate::DRAW_SAFE }>(
             buffer,
             0,
             0,
             buffer.width as isize,
             self.menu_height as isize,
-            self.formatting.secondary_color,
+            formatting.foreground_color,
         );
         render::draw_text_antialiased_isize::<{ crate::DRAW_SAFE }>(
             buffer,
             &self.title,
             (
-                self.formatting.horizontal_margin as isize
+                formatting.horizontal_margin as isize
                     + self.menu_height as isize,
-                -(self.formatting.vertical_margin as isize),
+                -(formatting.vertical_margin as isize),
             ),
-            self.formatting.text_color,
-            (self.menu_height - self.formatting.vertical_margin) as f32,
+            formatting.text_color,
+            (self.menu_height - formatting.vertical_margin) as f32,
             font,
         );
 
-        let h = self.menu_height / 2;
-        render::draw_circle::<false>(
+        let h = self.menu_height as isize / 2;
+        render::draw_circle::<false, false>(
             buffer,
             h,
             h,
             (h as f64 * collapse_button_size) as isize,
             mirl::graphics::adjust_brightness_hsl_of_rgb(
-                self.formatting.secondary_color,
+                formatting.foreground_color,
                 collapse_button_color_change,
-            ),
-            false, // THIS CRASHES WHEN THE CURRENT IS SMALLER THAN THE MENU HEIGHT
+            ), // THIS CRASHES WHEN THE CURRENT IS SMALLER THAN THE MENU HEIGHT
         );
+        if DRAW_MENU_ID {
+            render::draw_text_antialiased_isize::<true>(
+                buffer,
+                &format!(" {}", self.id),
+                (
+                    formatting.horizontal_margin as isize
+                        + self.menu_height as isize
+                        + mirl::render::get_text_width(
+                            &self.title,
+                            (self.menu_height - formatting.vertical_margin)
+                                as f32,
+                            font,
+                        ) as isize,
+                    -(formatting.vertical_margin as isize),
+                ),
+                formatting.text_color,
+                (self.menu_height - formatting.vertical_margin) as f32,
+                font,
+            );
+        }
     }
     #[must_use]
     #[allow(clippy::too_many_lines)]
     /// Use [`mirl::render::draw_buffer_on_buffer`](mirl::render::draw_buffer_on_buffer) (or [`draw_buffer_on_buffer_1_to_1`](mirl::render::draw_buffer_on_buffer_1_to_1)) to draw this buffer on any other
-    pub fn draw(&mut self) -> Buffer {
+    pub fn render(&mut self) -> Buffer {
+        let horizontal_context = false;
+        #[cfg(feature = "draw_debug")]
+        println!("Entered Draw");
         self.needs_redraw.set(false);
         if self.height < self.menu_height {
             return Buffer::generate_fallback(self.width, self.height, 4);
         }
-
         let collapse_button_size = 0.8;
         let collapse_button_color_change = -10.0;
+
+        let formatting = get_formatting();
 
         let buffer = Buffer::new_empty_with_color(
             self.width,
@@ -632,13 +475,14 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             } else {
                 self.height
             },
-            self.formatting.main_color,
+            formatting.background_color,
         );
-
+        #[cfg(feature = "draw_debug")]
+        println!("Created buffer");
         if self.collapsed {
             self.draw_menu(
                 &buffer,
-                &self.formatting.font,
+                &formatting.font,
                 collapse_button_size,
                 collapse_button_color_change,
             );
@@ -646,68 +490,157 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         }
 
         let collision = buffer.create_collision_isize::<false>(0, 0);
+        #[cfg(feature = "draw_debug")]
+        println!("Starting on drawing modules");
 
         // Using Rc<Buffer> instead of Buffer, without caching, increased testing fps from a stable 62 to a stable 63 - What
-        let mut buffers = Vec::new();
-        let mut offset =
-            (self.menu_height + self.formatting.horizontal_margin) as isize;
+        // let mut buffers = Vec::new();
 
-        for (idx, (_, i)) in (&self.modules).into_iter().enumerate() {
-            let buf: (std::rc::Rc<Buffer>, (isize, isize)) = if USE_CACHE {
-                let p = &self.cache[idx];
-                if i.need_redraw() {
-                    (
-                        std::rc::Rc::new(i.draw(&self.formatting)),
-                        i.get_next_offset(&self.modules, idx, &self.formatting),
+        let info = ModuleDrawInfo {
+            container_id: self.id,
+        };
+        let mut module_idx_cache = Vec::new();
+
+        let static_vertical_offset = self.scroll_offset_y
+            + (self.menu_height + formatting.horizontal_margin) as isize;
+        let static_horizontal_offset = self.scroll_offset_x;
+
+        let mut extra_vertical_offset = 0;
+        let mut extra_horizontal_offset = 0;
+
+        if let Ok(modules) = MODULES.read() {
+            for module_name in &self.modules {
+                let Some(module_idx) = get_idx_of_id(module_name) else {
+                    continue;
+                };
+                module_idx_cache.push(module_idx);
+                let module_container = &modules[module_idx];
+                #[cfg(feature = "draw_debug")]
+                println!(
+                    "Currently working on {:?}",
+                    mirl::misc::find_key_by_value(
+                        &MODULE_INDEX.read().unwrap(),
+                        &idx
                     )
-                } else if let Some(frame) = p {
-                    frame.clone()
+                );
+                let buf: (std::sync::Arc<Buffer>, InsertionMode);
+                let insert_into_cache: bool;
+
+                if USE_CACHE {
+                    if module_container.need_redraw() {
+                        let drawn_buffer =
+                            module_container.draw(&formatting, &info);
+                        buf = (
+                            std::sync::Arc::new(drawn_buffer.0),
+                            drawn_buffer.1,
+                        );
+                        insert_into_cache = true;
+                    } else if let Some(cached_buf) =
+                        get_image_cache(module_idx, self.id)
+                    {
+                        insert_into_cache = false;
+                        buf = (cached_buf, InsertionMode::Simple);
+                    } else {
+                        let drawn_buffer =
+                            module_container.draw(&formatting, &info);
+                        buf = (
+                            std::sync::Arc::new(drawn_buffer.0),
+                            drawn_buffer.1,
+                        );
+                        insert_into_cache = true;
+                    }
                 } else {
-                    (
-                        std::rc::Rc::new(i.draw(&self.formatting)),
-                        i.get_next_offset(&self.modules, idx, &self.formatting),
-                    )
+                    let drawn_buffer =
+                        module_container.draw(&formatting, &info);
+                    buf = (std::sync::Arc::new(drawn_buffer.0), drawn_buffer.1);
+                    insert_into_cache = true;
                 }
-            } else {
-                (
-                    std::rc::Rc::new(i.draw(&self.formatting)),
-                    i.get_next_offset(&self.modules, idx, &self.formatting),
-                )
-            };
-            if USE_CACHE {
-                self.cache[idx] = Some(buf.clone());
-            }
-            let height = i.get_height(&self.formatting);
-            buffers.push((buf, offset));
-            offset += height + self.formatting.vertical_margin as isize;
-        }
 
-        let mut extra_vertical_offset = self.scroll_offset_y;
-        let mut extra_horizontal_offset = self.scroll_offset_x;
+                // if buf.1.2 {
+                //     extra_horizontal_offset = buf.1.0;
+                //     extra_vertical_offset = module_container
+                //         .get_height(&formatting)
+                //         + formatting.vertical_margin as isize
+                //         + buf.1.1;
+                // } else {
+                //     extra_horizontal_offset += buf.1.0;
+                //     extra_vertical_offset += module_container
+                //         .get_height(&formatting)
+                //         + formatting.vertical_margin as isize
+                //         + buf.1.1;
+                // }
+                let x = formatting.horizontal_margin as isize
+                    + extra_horizontal_offset
+                    + static_horizontal_offset;
+                let y = extra_vertical_offset + static_vertical_offset;
 
-        for ((buf, previous_module_offset), vertical_offset) in buffers {
-            let x = self.formatting.horizontal_margin as isize
-                + extra_horizontal_offset;
-            let y = vertical_offset + extra_vertical_offset;
+                let col = buf.0.create_collision_isize::<false>(x, y);
+                let position = (x, y);
 
-            let col = buf.create_collision_isize::<false>(x, y);
-            let position = (x, y);
+                if collision.does_area_fully_include_other_area(&col) {
+                    if FAST {
+                        render::draw_buffer_on_buffer_1_to_1::<
+                            false,
+                            true,
+                            false,
+                            false,
+                        >(&buffer, &buf.0, position);
+                    } else {
+                        render::draw_buffer_on_buffer_1_to_1::<
+                            false,
+                            true,
+                            true,
+                            false,
+                        >(&buffer, &buf.0, position);
+                    }
+                } else if FAST {
+                    render::draw_buffer_on_buffer_1_to_1::<
+                        true,
+                        true,
+                        false,
+                        false,
+                    >(&buffer, &buf.0, position);
+                } else {
+                    render::draw_buffer_on_buffer_1_to_1::<
+                        true,
+                        true,
+                        true,
+                        false,
+                    >(&buffer, &buf.0, position);
+                }
+                if horizontal_context {
+                    extra_horizontal_offset +=
+                        module_container.get_width(&formatting);
+                } else {
+                    extra_vertical_offset += module_container
+                        .get_height(&formatting)
+                        + formatting.vertical_margin as isize;
+                }
 
-            if collision.does_area_fully_include_other_area(&col) {
-                render::draw_buffer_on_buffer_1_to_1::<false, FAST, false>(
-                    &buffer, &buf, position,
+                module_container.modify_offset_cursor(
+                    &modules,
+                    &module_idx_cache,
+                    &formatting,
+                    (&mut extra_horizontal_offset, &mut extra_vertical_offset),
                 );
-            } else {
-                render::draw_buffer_on_buffer_1_to_1::<true, FAST, false>(
-                    &buffer, &buf, position,
-                );
+                if insert_into_cache {
+                    insert_into_image_cache(
+                        module_idx,
+                        self.id,
+                        (*buf.0).clone(),
+                        buf.1,
+                    );
+                }
             }
-            extra_horizontal_offset += previous_module_offset.0;
-            extra_vertical_offset += previous_module_offset.1;
         }
+        // #[cfg(feature = "draw_debug")]
+        // println!("Done with drawing modules");
+
+        #[cfg(feature = "draw_debug")]
+        println!("4");
         self.draw_menu(
             &buffer,
-            &self.formatting.font,
+            &formatting.font,
             collapse_button_size,
             collapse_button_color_change,
         );
@@ -719,11 +652,11 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         &mut self,
         mouse_pos: Option<(isize, isize)>,
         mouse_pos_delta: (isize, isize),
-        mouse_info: MouseData,
+        mouse_info: &MouseData,
         over_collapse_button: bool,
-    ) -> (Option<CursorStyle>, bool) {
+    ) -> (Option<CursorStyle>, FocusTaken) {
         let mut cursor_style = None;
-        let mut gui_in_focus = false;
+        let mut gui_in_focus = FocusTaken::FocusFree;
         // WINDOW DRAGGING
         if let Some(current_mouse_position) = mouse_pos {
             let menu_metrics: mirl::math::collision::Rectangle<isize, false> =
@@ -738,6 +671,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
 
             if collides {
                 cursor_style = Some(CursorStyle::Copy);
+                gui_in_focus = FocusTaken::VisuallyTaken;
             }
             if (self.dragging && mouse_info.left.down)
                 || (mouse_info.left.clicked
@@ -745,7 +679,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     && !self.resizing
                     && !over_collapse_button)
             {
-                gui_in_focus = true;
+                gui_in_focus = FocusTaken::FunctionallyTaken;
                 //cursor_style = Some(CursorStyle::ClosedHand);
                 cursor_style = Some(CursorStyle::AllScroll);
                 self.dragging = true;
@@ -777,11 +711,11 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         &mut self,
         mouse_pos: Option<(isize, isize)>,
         mouse_pos_delta: (isize, isize),
-        mouse_info: MouseData,
+        mouse_info: &MouseData,
         over_collapse_button: bool,
-    ) -> (Option<CursorStyle>, bool) {
+    ) -> (Option<CursorStyle>, FocusTaken) {
         let mut cursor_style = None;
-        let mut gui_in_focus = false;
+        let mut gui_in_focus = FocusTaken::FocusFree;
         if let Some(mouse_position) = mouse_pos {
             // Resize
             let hit_box: mirl::math::collision::Rectangle<isize, true> =
@@ -806,13 +740,14 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     .resizing_allowed_in_directions
                     .is_direction_allowed_u8(at_corner)
                 {
-                    return (None, false);
+                    return (None, FocusTaken::FocusFree);
                 }
                 // Do not show the option to drag if over the collapse button, that is so annoying
                 if at_corner != u8::MAX
                     && (self.resizing || !over_collapse_button)
                 {
                     cursor_style = corner_type_to_cursor_style(at_corner);
+                    gui_in_focus = FocusTaken::VisuallyTaken;
                 }
                 if (self.resizing && mouse_info.left.down)
                     || (mouse_info.left.clicked
@@ -823,7 +758,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     self.resizing = true;
                     self.at_corner = at_corner;
                     if mouse_pos.is_some() {
-                        gui_in_focus = true;
+                        gui_in_focus = FocusTaken::FunctionallyTaken;
                         // let mouse_pos_delta =
                         //     current_mouse_pos.sub(self.last_mouse_pos);
                         let metric_change =
@@ -861,11 +796,19 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             gui_in_focus,
         )
     }
+    /// Intended to be used when updating multi GUIs in recession
+    pub fn update_using_module_data(
+        &mut self,
+        module_input: ModuleUpdateInfo,
+        module_outputs: &GuiOutput,
+    ) -> GuiOutput {
+        self.internal_update(module_input, module_outputs)
+    }
     /// Please only provide the clipboard data when it is being requested
     ///
-    /// You may lie about the input metrics however you like, if anything crashes, please report such to whomever is maintaining this eye strain
+    /// You may lie about the input metrics however you like, if anything crashes, please report such to whomever is maintaining the gui or modules you used based on what crashed
     #[must_use]
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)] // Well, clippy... it's just big. :(
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         mouse_pos: Option<(isize, isize)>,
@@ -877,9 +820,6 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         delta_time: f64,
         clipboard_data: &Option<mirl::platform::file_system::FileData>,
     ) -> GuiOutput {
-        let hover_over_menu_takes_focus = false;
-
-        // There are so many checks for if mouse_pos isn't None, who wrote this???
         let mouse_data = MouseData {
             left: ButtonState::new(left_mouse_down, self.last_left_mouse_down),
             middle: ButtonState::new(
@@ -891,250 +831,143 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                 self.last_right_mouse_down,
             ),
         };
-
-        let mut cursor_style = None;
-
-        let mut over_collapse_button = false;
-
-        let collapse_button_collision =
-            if let Some(current_mouse_pos) = mouse_pos {
-                if self.collapse_button_collision_is_circle {
-                    let t = self.menu_height as isize / 2;
-                    mirl::math::collision::Circle::<_, false>::new(
-                        self.x + t,
-                        self.y + t,
-                        t,
-                    )
-                    .does_area_contain_point(current_mouse_pos)
-                } else {
-                    mirl::math::collision::Rectangle::<_, false>::new(
-                        self.x,
-                        self.y,
-                        self.menu_height as isize,
-                        self.menu_height as isize,
-                    )
-                    .does_area_contain_point(current_mouse_pos)
-                }
-            } else {
-                false
-            };
-        if !(self.dragging || self.resizing) && collapse_button_collision {
-            over_collapse_button = true;
-            cursor_style = Some(CursorStyle::ContextMenu);
-            if mouse_data.left.clicked {
-                self.collapsed = !self.collapsed;
-            }
-        }
-
-        // If the mouse position is invalid, reset it
-        if self.last_mouse_pos == (isize::MIN, isize::MIN)
-            && let Some(current_mouse_pos) = mouse_pos
-        {
-            self.last_mouse_pos = current_mouse_pos;
-        }
-
         let mouse_pos_delta =
             mouse_pos.unwrap_or((0, 0)).sub(self.last_mouse_pos);
 
-        if let Some(current_mouse_pos) = mouse_pos {
-            self.last_mouse_pos = current_mouse_pos;
-        }
-
-        let mut gui_in_focus = false;
-
-        // Dragging has priority, not because it should but because it's ordered like this
-
-        // Handle dragging
-        if self.allow_dragging {
-            let dragging_output = self.handle_dragging(
+        self.internal_update(
+            ModuleUpdateInfo {
+                focus_taken: FocusTaken::FocusFree,
                 mouse_pos,
-                mouse_pos_delta,
-                mouse_data,
-                over_collapse_button,
-            );
-            if dragging_output.0.is_some() && cursor_style.is_none() {
-                cursor_style = dragging_output.0;
-            }
-            gui_in_focus = gui_in_focus
-                || dragging_output.1
-                || (dragging_output.0.is_some() && hover_over_menu_takes_focus);
-        }
-        // Handle resizing
-        {
-            let resizing_output = self.handle_resizing(
-                mouse_pos,
-                mouse_pos_delta,
-                mouse_data,
-                over_collapse_button,
-            );
-            if resizing_output.0.is_some() && cursor_style.is_none() {
-                cursor_style = resizing_output.0;
-            }
-
-            gui_in_focus = gui_in_focus
-                || resizing_output.1
-                || (resizing_output.0.is_some() && hover_over_menu_takes_focus);
-        }
-
-        let mut offset = 0;
-
-        let mut hide_cursor = false;
-        let mut text_input_selected = false;
-        let mut new_cursor_position = None;
-        let mut new_clipboard_data = None;
-        let mut request_clipboard_data = false;
-
-        let cursor_offset = (0, 0)
-            .sub((self.formatting.horizontal_margin as isize, 0))
-            .sub((self.x, self.y))
-            .sub((0, self.menu_height as isize));
-
-        let mut extra_vertical_offset = self.scroll_offset_y;
-        let mut extra_horizontal_offset = self.scroll_offset_x;
-
-        for (idx, (_, module)) in self.modules.iter().enumerate() {
-            let height = module.get_height(&self.formatting);
-            let position = mouse_pos.map(|input| {
-                input
-                    .sub((0, offset))
-                    .add(cursor_offset)
-                    .sub((extra_horizontal_offset, extra_vertical_offset))
-            });
-            let infos = ModuleInputs {
-                focus_taken: gui_in_focus,
-                mouse_pos: position,
+                real_mouse_pos: mouse_pos,
                 mouse_pos_delta,
                 mouse_scroll,
                 mouse_info: &mouse_data,
-                delta_time,
-                formatting: &self.formatting,
                 pressed_keys,
+                delta_time,
                 clipboard_data,
-            };
-            let module_output = module.update(&infos);
+                container_id: self.id,
+            },
+            &GuiOutput::empty(),
+        )
+    }
+    // /// Creates a new module input instance
+    // #[must_use]
+    // #[allow(clippy::too_many_arguments)]
+    // pub fn get_module_input<'a>(
+    //     &mut self,
+    //     mouse_pos: Option<(isize, isize)>,
+    //     mouse_scroll: Option<(isize, isize)>,
+    //     left_mouse_down: bool,
+    //     middle_mouse_down: bool,
+    //     right_mouse_down: bool,
+    //     pressed_keys: &'a Vec<KeyCode>,
+    //     delta_time: f64,
+    //     clipboard_data: &'a Option<mirl::platform::file_system::FileData>,
+    // ) -> ModuleInputs<'a> {
+    //     let mouse_data = MouseData {
+    //         left: ButtonState::new(left_mouse_down, self.last_left_mouse_down),
+    //         middle: ButtonState::new(
+    //             middle_mouse_down,
+    //             self.last_middle_mouse_down,
+    //         ),
+    //         right: ButtonState::new(
+    //             right_mouse_down,
+    //             self.last_right_mouse_down,
+    //         ),
+    //     };
+    //     let mouse_pos_delta =
+    //         mouse_pos.unwrap_or((0, 0)).sub(self.last_mouse_pos);
 
-            // Setting variables based on module output
-            // Dragging/Resizing has priority
-            if module_output.new_cursor_style.is_some()
-                && cursor_style.is_none()
-            {
-                cursor_style = module_output.new_cursor_style;
-            }
-            request_clipboard_data =
-                request_clipboard_data || module_output.request_clipboard_data;
-            hide_cursor = hide_cursor || module_output.hide_cursor;
-            gui_in_focus = gui_in_focus || module_output.focus_taken;
-            text_input_selected =
-                text_input_selected || module_output.text_input_selected;
-
-            if module_output.new_cursor_position.is_some() {
-                new_cursor_position = module_output.new_cursor_position;
-            }
-            if module_output.new_clipboard_data.is_some() {
-                new_clipboard_data = module_output.new_clipboard_data;
-            }
-            offset += height + self.formatting.vertical_margin as isize;
-
-            // We gotta add the "previous_module_offset" at the end so it is previous offset for the next module. That sentence is way more complicated than it should be
-            let previous_module_offset_value =
-                module.get_next_offset(&self.modules, idx, &self.formatting);
-
-            extra_horizontal_offset += previous_module_offset_value.0;
-            extra_vertical_offset += previous_module_offset_value.1;
-        }
-
-        if !gui_in_focus
-            && let Some(scroll) = mouse_scroll
-            && let Some(mouse_pos) = mouse_pos
-        {
-            let window_hit_box: mirl::math::collision::Rectangle<_, false> =
-                mirl::math::collision::Rectangle::new(
-                    self.x,
-                    self.y,
-                    self.width as isize,
-                    self.height as isize,
-                );
-            if window_hit_box.does_area_contain_point(mouse_pos) {
-                if pressed_keys.contains(&KeyCode::LeftShift) {
-                    self.scroll_offset_x +=
-                        scroll.1 * self.horizontal_scroll_multiplier_x;
-                    self.scroll_offset_y +=
-                        scroll.0 * self.horizontal_scroll_multiplier_y;
-                } else {
-                    self.scroll_offset_x +=
-                        scroll.0 * self.vertical_scroll_multiplier_x;
-                    self.scroll_offset_y +=
-                        scroll.1 * self.vertical_scroll_multiplier_x;
-                }
-                // This should be done with a simple if else, why did I decide use a sorted list?
-                let size = self.get_size_to_see_all_modules();
-                let mut y_range = [0, self.height as isize - size.1];
-                y_range.sort_unstable();
-                self.scroll_offset_y =
-                    self.scroll_offset_y.clamp(y_range[0], y_range[1]);
-
-                let mut x_range = [0, self.width as isize - size.0];
-                x_range.sort_unstable();
-                self.scroll_offset_x =
-                    self.scroll_offset_x.clamp(x_range[0], x_range[1]);
-                gui_in_focus = true;
-            }
-        }
-
-        self.last_left_mouse_down = left_mouse_down;
-        self.last_middle_mouse_down = middle_mouse_down;
-        self.last_right_mouse_down = right_mouse_down;
-        GuiOutput {
-            new_cursor_style: cursor_style,
-            focus_taken: gui_in_focus,
-            new_cursor_position,
-            hide_cursor,
-            new_clipboard_data,
-            text_input_selected,
-            request_clipboard_data,
-        }
+    //     ModuleInputs {
+    //         focus_taken: false,
+    //         mouse_pos,
+    //         real_mouse_pos: mouse_pos,
+    //         mouse_pos_delta,
+    //         mouse_scroll,
+    //         mouse_info: & mouse_data,
+    //         pressed_keys,
+    //         delta_time,
+    //         clipboard_data,
+    //     }
+    // }
+    /// Get the size at which every module is visible from cache if possible
+    pub fn get_size_to_see_all_modules_caches(&self) -> (isize, isize) {
+        self.size_to_see_all_modules
+            .map_or_else(|| self.get_size_to_see_all_modules(), |s| s)
     }
 
     /// Get the size at which every module is visible
     pub fn get_size_to_see_all_modules(&self) -> (isize, isize) {
         let mut min_width = 0;
         let mut min_height = 0;
+        let horizontal_context = false;
 
-        let mut current_pos = (0, 0);
-        for (idx, (_, item)) in self.modules.iter().enumerate() {
-            let width = item.get_width(&self.formatting);
-            let height = item.get_height(&self.formatting);
-            let next_offset =
-                item.get_next_offset(&self.modules, idx, &self.formatting);
+        let mut extra_vertical_offset = 0;
+        let mut extra_horizontal_offset = 0;
 
-            let t_width = width + current_pos.0;
-            let t_height = height + current_pos.1;
-            if t_width > min_width {
-                min_width = t_width;
+        let mut used_idx = Vec::new();
+        let formatting = get_formatting();
+
+        if let Ok(modules) = MODULES.read() {
+            for module_name in &self.modules {
+                let Some(module_idx) = get_idx_of_id(module_name) else {
+                    continue;
+                };
+                used_idx.push(module_idx); // Fixed: should be module_idx, not idx
+                let module_container = &modules[module_idx];
+
+                // Calculate the actual position where this module would be drawn
+                let x = formatting.horizontal_margin as isize
+                    + extra_horizontal_offset;
+                let y = extra_vertical_offset;
+
+                // Calculate the total width and height this module would occupy
+                let module_width = module_container.get_width(&formatting);
+                let module_height = module_container.get_height(&formatting);
+
+                let total_width = x + module_width;
+                let total_height = y + module_height;
+
+                if total_width > min_width {
+                    min_width = total_width;
+                }
+                if total_height > min_height {
+                    min_height = total_height;
+                }
+
+                // Update offsets for next module (matching the renderer logic)
+                if horizontal_context {
+                    extra_horizontal_offset += module_width;
+                } else {
+                    extra_vertical_offset +=
+                        module_height + formatting.vertical_margin as isize;
+                }
+
+                module_container.modify_offset_cursor(
+                    &modules,
+                    &used_idx,
+                    &formatting,
+                    (&mut extra_horizontal_offset, &mut extra_vertical_offset),
+                );
             }
-            if t_height > min_height {
-                min_height = t_height;
-            }
-            current_pos = current_pos
-                .add(next_offset)
-                .add((0, height))
-                .add((0, self.formatting.vertical_margin).tuple_2_into());
         }
 
+        // Add final margins
         (
-            min_width + self.formatting.horizontal_margin as isize * 2,
-            min_height + self.formatting.vertical_margin as isize,
+            min_width + formatting.horizontal_margin as isize,
+            min_height + formatting.vertical_margin as isize * 2,
         )
+
         // FOR TOOLBAR MODULES:
         // let mut min_width = 0;
         // let mut min_height = 0;
 
         // let mut current_pos = (0, 0);
         // for (idx, (_, item)) in self.modules.iter().enumerate() {
-        //     let width = item.get_width(&self.formatting);
-        //     let height = item.get_height(&self.formatting);
+        //     let width = item.get_width(&formatting);
+        //     let height = item.get_height(&formatting);
         //     let next_offset =
-        //         item.get_next_offset(&self.modules, idx, &self.formatting);
+        //         item.get_next_offset(&self.modules, idx, &formatting);
 
         //     let t_width = width + current_pos.0;
         //     let t_height = height + current_pos.1;
@@ -1147,10 +980,10 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         //     current_pos = current_pos
         //         .add(next_offset)
         //         .add((width, 0))
-        //         .add((self.formatting.horizontal_margin, 0).tuple_2_into());
+        //         .add((formatting.horizontal_margin, 0).tuple_2_into());
         // }
 
-        // (min_width , min_height+ self.formatting.vertical_margin as isize * 2)
+        // (min_width , min_height+ formatting.vertical_margin as isize * 2)
     }
     /// Set the current size of the window to be able to see all modules
     pub fn set_size_to_see_all_modules(&mut self) {
@@ -1159,13 +992,282 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         self.height =
             size.1.max(self.menu_height as isize) as usize + self.menu_height;
     }
-    /// Apply current formatting to modules
-    pub fn apply_formatting_to_modules(&mut self) {
-        for (_, module) in &mut self.modules {
-            module.apply_new_formatting(&self.formatting);
+    #[allow(clippy::too_many_lines)] // Well, clippy... it's just... big. :(
+    fn internal_update(
+        &mut self,
+        module_input: ModuleUpdateInfo,
+        module_outputs: &GuiOutput,
+    ) -> GuiOutput {
+        let horizontal_context = false;
+        let mut module_input = module_input;
+        module_input.container_id = self.id;
+
+        // There are so many checks for if mouse_pos isn't None, who wrote this???
+
+        // You fool, it was I!
+
+        // Roleplaying with yourself but with such a timely gap that it feels like there are multiple people working on this project
+
+        let mut cursor_style = module_outputs.new_cursor_style;
+        let mut gui_in_focus = module_input.focus_taken;
+        if !gui_in_focus {
+            //println!(">>>{:?}", gui_in_focus);
+            let mut over_collapse_button = false;
+
+            let collapse_button_collision =
+                if let Some(current_mouse_pos) = module_input.mouse_pos {
+                    if self.collapse_button_collision_is_circle {
+                        let t = self.menu_height as isize / 2;
+                        mirl::math::collision::Circle::<_, false>::new(
+                            self.x + t,
+                            self.y + t,
+                            t,
+                        )
+                        .does_area_contain_point(current_mouse_pos)
+                    } else {
+                        mirl::math::collision::Rectangle::<_, false>::new(
+                            self.x,
+                            self.y,
+                            self.menu_height as isize,
+                            self.menu_height as isize,
+                        )
+                        .does_area_contain_point(current_mouse_pos)
+                    }
+                } else {
+                    false
+                };
+            if !(self.dragging || self.resizing) && collapse_button_collision {
+                over_collapse_button = true;
+                cursor_style = Some(CursorStyle::ContextMenu);
+                if module_input.mouse_info.left.clicked {
+                    self.collapsed = !self.collapsed;
+                    gui_in_focus |= FocusTaken::FunctionallyTaken;
+                } else {
+                    gui_in_focus |= FocusTaken::VisuallyTaken;
+                }
+            }
+
+            // If the mouse position is invalid, reset it
+            if self.last_mouse_pos == (isize::MIN, isize::MIN)
+                && let Some(current_mouse_pos) = module_input.mouse_pos
+            {
+                self.last_mouse_pos = current_mouse_pos;
+            }
+
+            if let Some(current_mouse_pos) = module_input.mouse_pos {
+                self.last_mouse_pos = current_mouse_pos;
+            }
+
+            // Dragging has priority, not because it should but because it's ordered like this
+
+            // Handle dragging
+            if self.allow_dragging {
+                let dragging_output = self.handle_dragging(
+                    module_input.mouse_pos,
+                    module_input.mouse_pos_delta,
+                    module_input.mouse_info,
+                    over_collapse_button,
+                );
+                if dragging_output.0.is_some() && cursor_style.is_none() {
+                    cursor_style = dragging_output.0;
+                }
+                #[cfg(feature = "focus_debug")]
+                if gui_in_focus < dragging_output.1 {
+                    println!(
+                        "Dragging increased focus: {:?}",
+                        dragging_output.1
+                    );
+                }
+                gui_in_focus |= dragging_output.1;
+            }
+            // Handle resizing
+            {
+                let resizing_output = self.handle_resizing(
+                    module_input.mouse_pos,
+                    module_input.mouse_pos_delta,
+                    module_input.mouse_info,
+                    over_collapse_button,
+                );
+                if resizing_output.0.is_some() && cursor_style.is_none() {
+                    cursor_style = resizing_output.0;
+                }
+                #[cfg(feature = "focus_debug")]
+                if gui_in_focus < resizing_output.1 {
+                    println!(
+                        "Resizing increased focus: {:?}",
+                        resizing_output.1
+                    );
+                }
+
+                gui_in_focus |= resizing_output.1;
+            }
         }
-        for (_, module) in &mut self.toolbar_modules {
-            module.apply_new_formatting(&self.formatting);
+        let formatting = get_formatting();
+
+        let mut hide_cursor = false;
+        let mut text_input_selected = false;
+        let mut new_cursor_position = None;
+        let mut new_clipboard_data = None;
+        let mut request_clipboard_data = false;
+
+        let cursor_offset = (0, 0)
+            .sub((formatting.horizontal_margin as isize, 0))
+            .sub((self.x, self.y))
+            .sub((0, self.menu_height as isize));
+
+        let static_vertical_offset =
+            self.scroll_offset_y + formatting.horizontal_margin as isize;
+        let static_horizontal_offset = self.scroll_offset_x;
+
+        let mut extra_vertical_offset = 0;
+        let mut extra_horizontal_offset = 0;
+
+        let mut module_idx_cache = Vec::new();
+        if let Ok(modules) = MODULES.read() {
+            for module_name in &self.modules {
+                let Some(module_idx) = get_idx_of_id(module_name) else {
+                    continue;
+                };
+                let module = &modules[module_idx];
+                module_idx_cache.push(module_idx);
+
+                //let height = module.get_height(&formatting);
+                let position = module_input.real_mouse_pos.map(|input| {
+                    input
+                        .add(cursor_offset)
+                        .sub((extra_horizontal_offset, extra_vertical_offset))
+                        .sub((static_horizontal_offset, static_vertical_offset))
+                });
+                module_input.mouse_pos = position;
+
+                // let infos = ModuleInputs {
+                //     focus_taken: gui_in_focus,
+                //     mouse_pos: position,
+                //     mouse_pos_delta,
+                //     mouse_scroll,
+                //     mouse_info: &mouse_data,
+                //     delta_time,
+                //     formatting: &formatting,
+                //     pressed_keys,
+                //     clipboard_data,
+                // };
+                let module_output = module.update(&module_input);
+
+                // Setting variables based on module output
+                request_clipboard_data = request_clipboard_data
+                    || module_output.request_clipboard_data;
+                hide_cursor = hide_cursor || module_output.hide_cursor;
+                if gui_in_focus < module_output.focus_taken {
+                    // Dragging/Resizing has visual priority IF no module is taking functional focus -> It just looks nicer
+                    if module_output.new_cursor_style.is_some() {
+                        cursor_style = module_output.new_cursor_style;
+                    }
+                    #[cfg(feature = "focus_debug")]
+                    println!(
+                        "Module {:?} increased focus: from {:?} to {:?}",
+                        mirl::misc::find_key_by_value(
+                            &MODULE_INDEX.read().unwrap(),
+                            &module_idx
+                        ),
+                        gui_in_focus,
+                        module_output.focus_taken
+                    );
+                }
+                gui_in_focus |= module_output.focus_taken;
+                module_input.focus_taken = gui_in_focus;
+                text_input_selected =
+                    text_input_selected || module_output.text_input_selected;
+
+                if module_output.new_cursor_position.is_some() {
+                    new_cursor_position = module_output.new_cursor_position;
+                }
+                if module_output.new_clipboard_data.is_some() {
+                    new_clipboard_data = module_output.new_clipboard_data;
+                }
+
+                if horizontal_context {
+                    extra_horizontal_offset += module.get_width(&formatting);
+                } else {
+                    extra_vertical_offset += module.get_height(&formatting)
+                        + formatting.vertical_margin as isize;
+                }
+                module.modify_offset_cursor(
+                    &modules[..],
+                    &module_idx_cache,
+                    &formatting,
+                    (&mut extra_horizontal_offset, &mut extra_vertical_offset),
+                );
+            }
+        }
+
+        if !gui_in_focus.is_focus_taken()
+            && let Some(mouse_pos) = module_input.real_mouse_pos
+        {
+            let window_hit_box: mirl::math::collision::Rectangle<_, true> =
+                mirl::math::collision::Rectangle::new(
+                    self.x,
+                    self.y,
+                    self.get_width() as isize,
+                    self.get_height() as isize,
+                );
+            if window_hit_box.does_area_contain_point(mouse_pos) {
+                if let Some(scroll) = module_input.mouse_scroll
+                    && scroll != (0, 0)
+                {
+                    if module_input.pressed_keys.contains(&KeyCode::LeftShift) {
+                        self.scroll_offset_x +=
+                            scroll.1 * self.horizontal_scroll_multiplier_x;
+                        self.scroll_offset_y +=
+                            scroll.0 * self.horizontal_scroll_multiplier_y;
+                    } else {
+                        self.scroll_offset_x +=
+                            scroll.0 * self.vertical_scroll_multiplier_x;
+                        self.scroll_offset_y +=
+                            scroll.1 * self.vertical_scroll_multiplier_y;
+                    }
+                    // This should be done with a simple if else, why did I decide use a sorted list?
+                    let size = self.get_size_to_see_all_modules();
+                    let mut y_range = [
+                        0,
+                        self.height as isize
+                            - size.1
+                            - self.menu_height as isize,
+                    ];
+                    y_range.sort_unstable();
+                    self.scroll_offset_y =
+                        self.scroll_offset_y.clamp(y_range[0], y_range[1]);
+
+                    let mut x_range = [0, self.width as isize - size.0];
+                    x_range.sort_unstable();
+                    self.scroll_offset_x =
+                        self.scroll_offset_x.clamp(x_range[0], x_range[1]);
+                    gui_in_focus = FocusTaken::FunctionallyTaken;
+                } else {
+                    // This is if the cursor is on top on the gui but not interacting with anything
+                    if module_input.mouse_info.left.clicked {
+                        gui_in_focus = FocusTaken::FunctionallyTaken;
+                    } else {
+                        gui_in_focus = FocusTaken::VisuallyTaken;
+                    }
+                }
+            }
+        }
+
+        self.last_left_mouse_down = module_input.mouse_info.left.down;
+        self.last_middle_mouse_down = module_input.mouse_info.middle.down;
+        self.last_right_mouse_down = module_input.mouse_info.right.down;
+        #[cfg(any(feature = "draw_debug", feature = "focus_debug"))]
+        if gui_in_focus == FocusTaken::FunctionallyTaken {
+            cursor_style = Some(CursorStyle::Cell);
+        }
+        GuiOutput {
+            new_cursor_style: cursor_style,
+            focus_taken: gui_in_focus,
+            new_cursor_position,
+            hide_cursor,
+            new_clipboard_data,
+            text_input_selected,
+            request_clipboard_data,
         }
     }
 }

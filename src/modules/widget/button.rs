@@ -1,12 +1,16 @@
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, render};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(unpredictable_function_pointer_comparisons)]
 /// A simple button
 pub struct Button {
     /// A function that will be executed every time the button is pressed, not released
-    pub function: Option<fn()>,
-    /// If the cursor is currently hovering over the button
-    pub hovering: bool,
+    pub function_on_click: Option<fn()>,
+    /// A function that will be executed every time the button is released, not pressed
+    pub function_on_release: Option<fn()>,
+    /// A function that will be executed every time the button held down, neither pressed or released. The usize input is the amount of frames the button has been held for
+    pub function_on_held: Option<fn(usize)>,
+    /// is currently hovering over the button
+    pub hovering: usize,
     /// If the button is actively pressed
     pub pressed: bool,
     #[allow(missing_docs)]
@@ -27,6 +31,8 @@ pub struct Button {
     pub color_change_on_clicking: f32,
     /// At some point you just can't read the text anymore if it is scaled to miniature sizes so instead it'll scroll
     pub threshold_before_text_scrolls: f32,
+    /// Keep track of the menus so each one can be drawn correctly
+    pub menus: Vec<(usize, bool)>,
 }
 impl Button {
     const DEFAULT_COLOR_CHANGE_ON_HOVER: f32 = -5.0;
@@ -39,14 +45,16 @@ impl Button {
         text: String,
         height: usize,
         width: Option<usize>,
-        function: Option<fn()>,
         font: Option<&fontdue::Font>,
+        function_on_click: Option<fn()>,
+        function_on_release: Option<fn()>,
+        function_on_held: Option<fn(usize)>,
     ) -> Self {
         let width_to_height_mul = 3;
         Self {
-            function,
+            function_on_click,
             pressed: false,
-            hovering: false,
+            hovering: 0,
             width: width.unwrap_or_else(|| {
                 font.map_or_else(
                     || height * width_to_height_mul,
@@ -56,15 +64,18 @@ impl Button {
                     },
                 )
             }),
+            function_on_held,
+            function_on_release,
             height,
             text,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
             scroll: 0.0,
             scroll_multiplier: Self::DEFAULT_SCROLL_MULTIPLIER,
             color_change_on_hover: Self::DEFAULT_COLOR_CHANGE_ON_HOVER,
             color_change_on_clicking: Self::DEFAULT_COLOR_CHANGE_ON_CLICKING,
             threshold_before_text_scrolls:
                 Self::DEFAULT_THRESHOLD_BEFORE_TEXT_SCROLLS,
+            menus: Vec::new(),
         }
     }
 }
@@ -76,21 +87,30 @@ impl DearMirlGuiModule for Button {
     // fn as_any_mut(&mut self) -> &mut dyn Any {
     //     self
     // }
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
+        self.needs_redraw.set(false);
         let text_color = formatting.text_color;
 
-        let mut color = formatting.secondary_color;
-        if self.hovering {
+        let mut color = formatting.foreground_color;
+        //println!("Hover: {} Drawing for: {}", self.hovering, info.container_id);
+        if self.hovering == info.container_id {
             color = mirl::graphics::adjust_brightness_hsl_of_rgb(
                 color,
                 self.color_change_on_hover,
             );
-        }
-        if self.pressed {
-            color = mirl::graphics::adjust_brightness_hsl_of_rgb(
-                color,
-                self.color_change_on_clicking,
-            );
+            if self.pressed {
+                color = mirl::graphics::adjust_brightness_hsl_of_rgb(
+                    color,
+                    self.color_change_on_clicking,
+                );
+            }
         }
         let buffer =
             Buffer::new_empty_with_color(self.width, self.height, color);
@@ -160,7 +180,7 @@ impl DearMirlGuiModule for Button {
             self.needs_redraw.set(true);
         }
 
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         self.height as isize
@@ -168,14 +188,16 @@ impl DearMirlGuiModule for Button {
     fn get_width(&self, _formatting: &crate::Formatting) -> isize {
         self.width as isize
     }
-    fn update(&mut self, info: &crate::ModuleInputs) -> crate::GuiOutput {
+    fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         self.scroll += info.delta_time * self.scroll_multiplier;
         self.scroll %= 1.0;
 
-        if info.focus_taken {
+        if info.focus_taken.is_focus_taken() {
             self.pressed = false;
-            self.hovering = false;
-            return crate::GuiOutput::default(false);
+            if self.hovering == info.container_id {
+                self.hovering = 0;
+            }
+            return crate::GuiOutput::empty();
         }
         let collision = mirl::math::collision::Rectangle::<_, false>::new(
             0,
@@ -186,36 +208,49 @@ impl DearMirlGuiModule for Button {
         if let Some(mouse_position) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_position);
             if collides {
-                self.hovering = true;
+                if self.hovering != info.container_id {
+                    self.needs_redraw.set(true);
+                    self.hovering = info.container_id;
+                }
                 if info.mouse_info.left.clicked
-                    && let Some(function) = &self.function
+                    && let Some(function) = &self.function_on_click
+                {
+                    function();
+                } else if info.mouse_info.left.released
+                    && let Some(function) = &self.function_on_release
                 {
                     function();
                 }
                 if (self.pressed && info.mouse_info.left.down)
                     || info.mouse_info.left.clicked
                 {
-                    if !self.pressed {
-                        self.needs_redraw.set(true);
-                    }
+                    // if !self.pressed {
+                    //     self.needs_redraw.set(true);
+                    // }
                     self.pressed = true;
                 } else {
                     self.pressed = false;
-                    self.needs_redraw.set(true);
                 }
             } else {
-                if self.hovering {
+                if self.hovering == info.container_id {
+                    self.hovering = 0;
+                    self.pressed = false;
+                }
+                if self.hovering != 0 {
                     self.needs_redraw.set(true);
                 }
-                self.pressed = false;
-                self.hovering = false;
             }
         } else {
             self.pressed = false;
-            self.hovering = false;
+            self.hovering = 0;
         }
-
-        crate::GuiOutput::default(self.pressed)
+        if self.pressed {
+            crate::GuiOutput::default(FocusTaken::FunctionallyTaken)
+        } else if self.hovering == info.container_id {
+            crate::GuiOutput::default(FocusTaken::VisuallyTaken)
+        } else {
+            crate::GuiOutput::empty()
+        }
     }
     fn need_redraw(&self) -> bool {
         if self.needs_redraw.get() {

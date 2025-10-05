@@ -1,4 +1,4 @@
-use crate::{Buffer, DearMirlGuiModule, render};
+use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Create a visual margin between modules
@@ -25,7 +25,7 @@ impl Separator {
             width,
             thickness: line_thickness.unwrap_or(Self::DEFAULT_LINE_THICKNESS),
             is_vertical,
-            needs_redraw: true.into(),
+            needs_redraw: std::cell::Cell::new(true),
         }
     }
 }
@@ -38,11 +38,12 @@ impl DearMirlGuiModule for Separator {
     fn get_width(&self, _formatting: &crate::Formatting) -> isize {
         self.width as isize
     }
-    fn update(
-        &mut self,
-        _info: &crate::ModuleInputs,
-    ) -> crate::GuiOutput {
-        crate::GuiOutput::default(false)
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw
+            .set(crate::modules::misc::determine_need_redraw(need_redraw));
+    }
+    fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
+        crate::GuiOutput::empty()
     }
     fn need_redraw(&self) -> bool {
         if self.needs_redraw.get() {
@@ -52,7 +53,11 @@ impl DearMirlGuiModule for Separator {
             false
         }
     }
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        _info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         let buffer = Buffer::new_empty(self.width, self.height);
         if self.is_vertical {
             let x = self.width / 2 - self.thickness / 2;
@@ -61,7 +66,7 @@ impl DearMirlGuiModule for Separator {
                 (x, 0),
                 self.height,
                 true,
-                formatting.secondary_color,
+                formatting.foreground_color,
                 self.thickness as isize,
                 false,
             );
@@ -72,11 +77,11 @@ impl DearMirlGuiModule for Separator {
                 (0, y),
                 self.width,
                 false,
-                formatting.secondary_color,
+                formatting.foreground_color,
                 self.thickness as isize,
                 true,
             );
         }
-        buffer
+        (buffer, InsertionMode::ReplaceAll)
     }
 }

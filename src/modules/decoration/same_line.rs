@@ -1,36 +1,33 @@
 use crate::{Buffer, DearMirlGuiModule, InsertionMode};
 
-type FunctionModifyCursor = fn(
-    &[crate::gui::extra::ModuleContainer],
-    &Vec<usize>,
-    &crate::Formatting,
-    (&mut isize, &mut isize),
-);
-
-#[derive(Debug, Clone, Copy)]
-/// Define a custom offset for the next modules
-pub struct CustomOffset {
-    /// Take control over the draw/update cursor position yourself
-    pub function: FunctionModifyCursor,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Make the next module reside next to the previous
+pub struct SameLine {
+    width: isize,
 }
 
-impl CustomOffset {
+impl SameLine {
     #[allow(missing_docs)]
     #[must_use]
-    pub const fn new(function: FunctionModifyCursor) -> Self {
+    pub const fn new(margin: isize) -> Self {
         Self {
-            function,
+            width: margin,
         }
     }
 }
+impl Default for SameLine {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
 
-impl DearMirlGuiModule for CustomOffset {
+impl DearMirlGuiModule for SameLine {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
     fn get_height(&self, _formatting: &crate::Formatting) -> isize {
         0
     }
     fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        0
+        self.width
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         crate::GuiOutput::empty()
@@ -52,6 +49,16 @@ impl DearMirlGuiModule for CustomOffset {
         formatting: &crate::Formatting,
         current: (&mut isize, &mut isize),
     ) {
-        (self.function)(modules, used_idx, formatting, current);
+        let here = *used_idx.last().unwrap_or(&0);
+        if here < 2 {
+            return;
+        }
+        let Some(previous_idx) = used_idx.get(used_idx.len() - 2) else {
+            return;
+        };
+        let previous_module = &modules[*previous_idx];
+        *current.0 += self.width + previous_module.get_width(formatting);
+        *current.1 += -(previous_module.get_height(formatting)
+            + formatting.vertical_margin as isize * 2);
     }
 }

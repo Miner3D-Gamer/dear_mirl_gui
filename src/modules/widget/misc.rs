@@ -14,21 +14,19 @@ pub fn adjust_progress_by_mouse<T: mirl::math::NumberWithMonotoneOps + Copy>(
 #[must_use]
 pub fn draw_cross(size: usize, thickness: isize) -> Buffer {
     let buffer = Buffer::new_empty(size, size);
-    render::draw_line(
+    render::draw_line::<true>(
         &buffer,
         (0, 0),
         (size, size),
         mirl::graphics::color_presets::WHITE,
         thickness,
-        true,
     );
-    render::draw_line(
+    render::draw_line::<true>(
         &buffer,
         (0, size),
         (size, 0),
         mirl::graphics::color_presets::WHITE,
         thickness,
-        true,
     );
 
     buffer
@@ -107,4 +105,10 @@ pub fn merge_selections(regions: &[(usize, usize)]) -> Vec<(usize, usize)> {
     }
 
     merged.into_iter().map(|(s, e)| (s, e - s)).collect()
+}
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+/// When helper function when a module doesn't need to look differently on different guis
+pub fn determine_need_redraw(list: Vec<(usize, bool)>) -> bool {
+    list.iter().any(|x| x.1)
 }

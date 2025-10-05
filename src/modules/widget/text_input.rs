@@ -9,68 +9,10 @@ use mirl::{
 };
 
 use crate::{
-    Buffer,
-    DearMirlGuiModule,
-    ModuleInputs,
-    //modules::misc::merge_selections,
-    render,
+    Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, ModuleUpdateInfo,
+    get_formatting, render,
 };
 
-// impl Actions {
-//     #[must_use]
-//     /// Get the function inside the enum value
-//     pub const fn keybind(&self) -> &KeyBind {
-//         match self {
-//             Self::NewLine(kb)
-//             | Self::NewLineWithoutShifting(kb)
-//             | Self::Indent(kb)
-//             | Self::OutdentAtLineStart(kb)
-//             | Self::DeleteLeft(kb)
-//             | Self::DeleteRight(kb)
-//             | Self::DeleteStructureLeft(kb)
-//             | Self::DeleteStructureRight(kb)
-//             | Self::DeleteCurrentLine(kb)
-//             | Self::Undo(kb)
-//             | Self::Redo(kb)
-//             | Self::Copy(kb)
-//             | Self::Cut(kb)
-//             | Self::RequestPaste(kb)
-//             | Self::MoveUp(kb)
-//             | Self::MoveStructureUp(kb)
-//             | Self::MoveUpAndHighlight(kb)
-//             | Self::MoveStructureUpAndHighlight(kb)
-//             | Self::MoveDown(kb)
-//             | Self::MoveStructureDown(kb)
-//             | Self::MoveDownAndHighlight(kb)
-//             | Self::MoveStructureDownAndHighlight(kb)
-//             | Self::MoveLeft(kb)
-//             | Self::MoveStructureLeft(kb)
-//             | Self::MoveLeftAndHighlight(kb)
-//             | Self::MoveStructureLeftAndHighlight(kb)
-//             | Self::MoveRight(kb)
-//             | Self::MoveStructureRight(kb)
-//             | Self::MoveRightAndHighlight(kb)
-//             | Self::MoveStructureRightAndHighlight(kb)
-//             | Self::SwapWithLineAbove(kb)
-//             | Self::SwapWithLineBelow(kb)
-//             | Self::ToggleSearchWindow(kb)
-//             | Self::ToggleReplaceWindow(kb)
-//             | Self::ToggleOverwrite(kb)
-//             | Self::MoveToLine(kb)
-//             | Self::SelectAll(kb)
-//             | Self::DuplicateLineBelow(kb)
-//             | Self::DuplicateToAbove(kb)
-//             | Self::MoveToEndOfDocument(kb)
-//             | Self::MoveToEndOfLine(kb)
-//             | Self::MoveToStartOfDocument(kb)
-//             | Self::MoveToStartOfLine(kb)
-//             | Self::SelectStructure(kb)
-//             | Self::Outdent(kb)
-//             | Self::IndentAtLineStart(kb)
-//             | Self::SelectLine(kb) => kb,
-//         }
-//     }
-// }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// All the keybinds the text input module uses
 pub enum Actions {
@@ -470,6 +412,20 @@ pub fn default_keybind_layout() -> Vec<KeyBind<Actions>> {
             Actions::SelectStructure,
         ),
         KeyBind::new(false, false, true, vec![KeyCode::L], Actions::SelectLine),
+        KeyBind::new(
+            false,
+            false,
+            false,
+            vec![KeyCode::BrowserBack],
+            Actions::Undo,
+        ),
+        KeyBind::new(
+            false,
+            false,
+            false,
+            vec![KeyCode::BrowserForward],
+            Actions::Redo,
+        ),
     ])
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -573,7 +529,7 @@ pub struct TextInput {
     #[allow(missing_docs)]
     pub needs_redraw: std::cell::Cell<bool>,
     /// If the button has been selected
-    pub selected: bool,
+    pub selected: usize,
     /// Used for detecting new key strokes
     pub last_keys_pressed: Vec<KeyCode>,
     /// The vertical, and horizontal position of the cursors. Yes for some reason this has multi cursor support
@@ -639,6 +595,10 @@ pub struct Caret {
     pub highlight_pos: std::cell::Cell<TextPosition>,
     /// If highlight is active
     pub highlight_enabled: std::cell::Cell<bool>,
+    /// When moving vertically into a line with less characters, the "current" column position is forgotten. This variable is used to remember the last horizontal progress
+    pub retain_column: std::cell::Cell<Option<TextPosition>>,
+    /// Used for retaining the last largest horizontal positioning
+    pub last_pos: std::cell::Cell<TextPosition>,
 }
 impl Caret {
     #[allow(missing_docs)]
@@ -649,35 +609,37 @@ impl Caret {
             column: std::cell::Cell::new(column),
             highlight_pos: std::cell::Cell::new(TextPosition::new(0, 0)),
             highlight_enabled: std::cell::Cell::new(false),
+            retain_column: std::cell::Cell::new(None),
+            last_pos: std::cell::Cell::new(TextPosition::new(0, 0)),
         }
     }
     /// Set the highlight position to the current if there is no highlight
-    pub fn enable_highlight(&self) {
+    pub const fn enable_highlight(&self) {
         if !self.highlight_enabled.get() {
-            self.highlight_enabled.set(true);
-            self.highlight_pos.set(self.to_position());
+            self.highlight_enabled.replace(true);
+            self.highlight_pos.replace(self.to_position());
         }
     }
     /// Read the function name
-    pub fn set_highlight_origin_to_current_pos(&self) {
-        self.highlight_pos.set(self.to_position());
+    pub const fn set_highlight_origin_to_current_pos(&self) {
+        self.highlight_pos.replace(self.to_position());
     }
     /// Get if the cursor is highlighting something
     pub const fn is_highlighting(&self) -> bool {
         self.highlight_enabled.get()
     }
     /// Disable the highlight
-    pub fn reset_highlighted(&self) {
-        self.highlight_enabled.set(false);
+    pub const fn reset_highlighted(&self) {
+        self.highlight_enabled.replace(false);
     }
     /// Convert the caret position into a Position position :)
     pub const fn to_position(&self) -> TextPosition {
         TextPosition::new(self.line(), self.column())
     }
     /// Set the current position to the position of the given position
-    pub fn move_to_pos(&self, position: TextPosition) {
-        self.line.set(position.line);
-        self.column.set(position.column);
+    pub const fn move_to_pos(&self, position: TextPosition) {
+        self.line.replace(position.line);
+        self.column.replace(position.column);
     }
     /// Delete a single character to the right
     pub fn delete_right(&self, module: &mut TextInput) {
@@ -704,16 +666,12 @@ impl Caret {
             module.delete_text_in_area(self.get_highlighted_area());
         } else if self.column() == 0 {
             if self.line() != 0 {
-                self.column.set(
+                self.column.replace(
                     module.get_line_length(self.line.saturating_subtracted(1)),
                 );
             }
-            // println!(
-            //     "{} {}",
-            //     self.caret[0].line.saturating_subtracted(1),
-            //     self.caret[0].line(),
-            // );
             module.merge_lines(self.line.saturating_subtracted(1), self.line());
+            self.move_up(module);
         } else {
             module.remove_chars_from_line(
                 self.line(),
@@ -831,8 +789,29 @@ impl Caret {
     pub fn select_all(&self, module: &TextInput) {
         self.move_to_start_of_line(0);
         self.set_highlight_origin_to_current_pos();
-        self.highlight_enabled.set(true);
+        self.highlight_enabled.replace(true);
         self.move_to_end_of_document(module);
+    }
+    /// If a previous column position has been set, respect it
+    pub fn if_not_moved_restore_column(
+        &self,
+        last_pos: TextPosition,
+        module: &TextInput,
+    ) -> bool {
+        let do_not_retain_column = false;
+        if do_not_retain_column {
+            return false;
+        }
+        if let Some(highest_pos) = self.retain_column.get()
+            && self.last_pos.get() == last_pos
+        {
+            self.column.replace(
+                module.clamp_to_column(self.line(), highest_pos.column),
+            );
+            self.last_pos.replace(self.to_position());
+            return true;
+        }
+        false
     }
     /// Move to the last character of the last line
     pub fn move_to_end_of_document(&self, module: &TextInput) {
@@ -840,117 +819,152 @@ impl Caret {
     }
     /// Move cursor up one space safely
     pub fn move_up(&self, module: &TextInput) {
+        let pos = self.to_position();
         let previous = self.line.get();
-        self.line.set(self.line.get().saturating_sub(1));
-        //self.column.add(1);
+        self.line.replace(self.line.get().saturating_sub(1));
+
         if previous == self.line.get() {
-            self.column.set(0);
-        } else {
-            self.column.set(
+            // We are and were at the top so just go to the start of the line
+            self.move_to_start_of_this_line();
+        } else if !self.if_not_moved_restore_column(pos, module) {
+            self.retain_column.replace(Some(self.to_position()));
+            self.column.replace(
                 module.clamp_to_column(self.line.get(), self.column.get()),
             );
+            self.last_pos.replace(self.to_position());
         }
     }
     /// Sets the caret position to the end of the specified line
     pub fn move_to_end_of_line(&self, line: usize, module: &TextInput) {
-        self.line.set(line);
-        self.column.set(module.get_line_length(line));
+        self.line.replace(line);
+        self.column.replace(module.get_line_length(line));
     }
     /// Sets the caret position to the end of the current line
     pub fn move_to_end_of_this_line(&self, module: &TextInput) {
-        self.column.set(module.get_line_length(self.line.get()));
+        self.column.replace(module.get_line_length(self.line.get()));
     }
     /// Sets the caret position to the start of the specified line
-    pub fn move_to_start_of_line(&self, line: usize) {
-        self.line.set(line);
-        self.column.set(0);
+    pub const fn move_to_start_of_line(&self, line: usize) {
+        self.line.replace(line);
+        self.column.replace(0);
     }
     /// Sets the caret position to the start of the current line
-    pub fn move_to_start_of_this_line(&self) {
-        self.column.set(0);
+    pub const fn move_to_start_of_this_line(&self) {
+        self.column.replace(0);
     }
     /// Move cursor down one d safely
     pub fn move_down(&self, module: &TextInput) {
+        let pos = self.to_position();
         let previous = self.line.get();
-        self.line.set(module.clamp_to_line_count(self.line.get() + 1));
+        self.line.replace(module.clamp_to_line_count(self.line.get() + 1));
 
         if previous == self.line.get() {
-            self.column.set(module.get_line_length(previous));
-        } else {
-            self.column.set(
+            self.move_to_end_of_this_line(module);
+        } else if !self.if_not_moved_restore_column(pos, module) {
+            self.retain_column.replace(Some(self.to_position()));
+            self.column.replace(
                 module.clamp_to_column(self.line.get(), self.column.get()),
             );
+            self.last_pos.replace(self.to_position());
         }
     }
     /// Select the structure the caret is over
     pub fn select_structure(&self, module: &TextInput) {
-        let left = if mirl::misc::skipping_text_type::get_char_type(
+        let left_char_type = mirl::misc::skipping_text_type::get_char_type(
+            module
+                .get_character(self.line(), self.column().saturating_sub(1))
+                .unwrap_or_default(),
+        );
+        let right_char_type = mirl::misc::skipping_text_type::get_char_type(
             module
                 .get_character(self.line(), self.column())
                 .unwrap_or_default(),
-        ) == mirl::misc::skipping_text_type::get_char_type(
-            module
-                .get_character(self.line(), self.column() - 1)
-                .unwrap_or_default(),
-        ) {
+        );
+        let left = if self.column() == 1
+            || (self.column() != 0
+                && left_char_type
+                    == mirl::misc::skipping_text_type::get_char_type(
+                        module
+                            .get_character(self.line(), self.column() - 2)
+                            .unwrap_or_default(),
+                    ))
+        {
             mirl::misc::skipping_text_type::skip_char_type_backward(
                 &module.text[self.line()],
                 self.column(),
             )
+        } else if right_char_type == left_char_type {
+            self.column().saturating_sub(1)
         } else {
             self.column()
         };
-        let right = if mirl::misc::skipping_text_type::get_char_type(
-            module
-                .get_character(self.line(), self.column())
-                .unwrap_or_default(),
-        ) == mirl::misc::skipping_text_type::get_char_type(
-            module
-                .get_character(self.line(), self.column() + 1)
-                .unwrap_or_default(),
-        ) {
-            mirl::misc::skipping_text_type::skip_char_type_backward(
+        let right = if right_char_type
+            == mirl::misc::skipping_text_type::get_char_type(
+                module
+                    .get_character(self.line(), self.column() + 1)
+                    .unwrap_or_default(),
+            ) {
+            mirl::misc::skipping_text_type::skip_char_type(
                 &module.text[self.line()],
                 self.column(),
             )
+        } else if right_char_type == left_char_type {
+            self.column() + 1
         } else {
             self.column()
         };
-        self.column.set(left);
+        self.column.replace(left);
         self.enable_highlight();
-        self.column.set(right);
+        self.column.replace(right);
     }
     /// Move the caret one space to the left
     pub fn move_left(&self, module: &TextInput) {
-        if self.column.get() == 0 {
+        if self.is_highlighting() {
+            let pos1 = self.highlight_pos.get();
+            let pos2 = self.to_position();
+            if pos1 > pos2 {
+                self.move_to_pos(pos2);
+            } else {
+                self.move_to_pos(pos1);
+            }
+        } else if self.column.get() == 0 {
             if self.line.get() == 0 {
                 if module.allow_caret_wrap {
-                    self.line.set(module.line_count_idx());
-                    self.column.set(module.get_line_length(self.line.get()));
+                    self.line.replace(module.line_count_idx());
+                    self.column
+                        .replace(module.get_line_length(self.line.get()));
                 }
             } else {
-                self.line.set(self.line.get() - 1);
-                self.column.set(module.get_line_length(self.line.get()));
+                self.line.replace(self.line.get() - 1);
+                self.column.replace(module.get_line_length(self.line.get()));
             }
         } else {
-            self.column.set(self.column.get().saturating_sub(1));
+            self.column.replace(self.column.get().saturating_sub(1));
         }
     }
     /// Move the caret one space to the right
     pub fn move_right(&self, module: &TextInput) {
-        let l = module.get_line_length(self.line.get());
-        if self.column.get() == l {
+        if self.is_highlighting() {
+            let pos1 = self.highlight_pos.get();
+            let pos2 = self.to_position();
+            if pos1 < pos2 {
+                self.move_to_pos(pos2);
+            } else {
+                self.move_to_pos(pos1);
+            }
+        } else if self.column.get() == module.get_line_length(self.line.get()) {
             if self.line.get() == module.line_count_idx() {
                 if module.allow_caret_wrap {
-                    self.column.set(0);
-                    self.line.set(0);
+                    self.column.replace(0);
+                    self.line.replace(0);
                 }
             } else {
-                self.column.set(0);
-                self.line.set(module.clamp_to_line_count(self.line.get() + 1));
+                self.column.replace(0);
+                self.line
+                    .replace(module.clamp_to_line_count(self.line.get() + 1));
             }
         } else {
-            self.column.set(self.column.get() + 1);
+            self.column.replace(self.column.get() + 1);
         }
     }
     /// Move the caret postion the the end of the next detected structure
@@ -958,7 +972,7 @@ impl Caret {
         if self.column.get() == 0 {
             self.move_left(module);
         }
-        self.column.set(
+        self.column.replace(
             mirl::misc::skipping_text_type::skip_char_type_backward(
                 &module.text[self.line.get()],
                 self.column.get(),
@@ -970,7 +984,7 @@ impl Caret {
         if self.column.get() == module.get_line_length(self.line.get()) {
             self.move_right(module);
         }
-        self.column.set(mirl::misc::skipping_text_type::skip_char_type(
+        self.column.replace(mirl::misc::skipping_text_type::skip_char_type(
             &module.text[self.line.get()],
             self.column.get(),
         ));
@@ -999,17 +1013,17 @@ impl Caret {
         let skip =
             mirl::misc::skipping_text_type::skip_char_type(&strip, self.line());
         //println!("{skip}");
-        self.line.set(module.clamp_to_line_count(skip + self.line()));
+        self.line.replace(module.clamp_to_line_count(skip + self.line()));
     }
     // /// Move cursor up one space safely
     // pub fn move_up(&self, module: &TextInput) {
     //     let previous = self.line.get();
-    //     self.line.set(self.line.get().saturating_sub(1));
+    //     self.line.replace(self.line.get().saturating_sub(1));
 
     //     if previous == self.line.get() {
-    //         self.column.set(0);
+    //         self.column.replace(0);
     //     } else {
-    //         self.column.set(
+    //         self.column.replace(
     //             module.clamp_to_column(self.line.get(), self.column.get()),
     //         );
     //     }
@@ -1023,10 +1037,10 @@ impl Caret {
         self.column.get() // I forgot to set this to column instead of line, damn you copy paste
     }
     // pub fn set_line(&self, value: usize) {
-    //     self.line.set(value)
+    //     self.line.replace(value)
     // }
     // pub fn set_column(&self, value: usize) {
-    //     self.column.set(value)
+    //     self.column.replace(value)
     // }
 }
 
@@ -1042,15 +1056,14 @@ impl TextInput {
         lines: usize,
         text: Option<Vec<String>>,
         placeholder_text: Option<&str>,
-        formatting: &crate::Formatting,
     ) -> Self {
-        let mut temp = Self {
+        Self {
             width,
             line_height,
             lines,
             text: text.clone().unwrap_or_else(|| Vec::from([String::new()])),
-            needs_redraw: true.into(),
-            selected: false,
+            needs_redraw: std::cell::Cell::new(true),
+            selected: 0,
             last_keys_pressed: Vec::new(),
             // Yummy
             caret: vec![Caret::new(
@@ -1071,16 +1084,13 @@ impl TextInput {
             allow_caret_wrap: false,
             camera: (0, 0),
             line_number_offset: width / 10,
-            scroll_mul: (1, 1),
+            scroll_mul: (10, 10),
             overwrite_mode: false,
             retain_indent: true,
             menu_open: TextInputMenu::None,
             show_line_numbers: true,
             text_height: line_height as f32 * 0.8,
-        };
-        temp.recalculate_line_number_offset(formatting);
-
-        temp
+        }
     }
     #[allow(clippy::missing_panics_doc)]
     /// Calculate the offset the line number will take up
@@ -1146,9 +1156,9 @@ impl TextInput {
     }
     #[inline(always)]
     #[allow(clippy::inline_always)]
-    /// Clamp a value to the line count
-    pub fn clamp_to_column(&self, line: usize, other: usize) -> usize {
-        self.get_line_length(self.clamp_to_line_count(line)).min(other)
+    /// Clamp a value to the column of the specified line
+    pub fn clamp_to_column(&self, line: usize, column: usize) -> usize {
+        self.get_line_length(self.clamp_to_line_count(line)).min(column)
     }
     /// Get a single character from line, column
     pub fn get_character(&self, line: usize, column: usize) -> Option<char> {
@@ -1201,8 +1211,8 @@ impl TextInput {
 
             self.text.drain((line_start + 1)..=line_end);
         }
-        self.caret[0].line.set(line_start);
-        self.caret[0].column.set(front_pos);
+        self.caret[0].line.replace(line_start);
+        self.caret[0].column.replace(front_pos);
 
         self.caret[0].reset_highlighted();
     }
@@ -1286,8 +1296,8 @@ impl TextInput {
 
         self.caret[0]
             .line
-            .set(start_line.min(self.text.len().saturating_sub(1)));
-        self.caret[0].column.set(0);
+            .replace(start_line.min(self.text.len().saturating_sub(1)));
+        self.caret[0].column.replace(0);
         self.caret[0].reset_highlighted();
     }
     // pub fn move_caret_in_area
@@ -1415,7 +1425,7 @@ impl TextInput {
             cut_point,
             self.caret[0].column() - cut_point,
         );
-        self.caret[0].column.set(cut_point);
+        self.caret[0].column.replace(cut_point);
     }
     /// Like the new line function but doesn't copy the remaining text to the next line
     pub fn next_line_without_shifting(&mut self) {
@@ -1428,7 +1438,7 @@ impl TextInput {
         let before: String =
             self.indent_char.repeat_value(amount).iter().collect();
         self.caret[0].line.add(1);
-        self.caret[0].column.set(amount);
+        self.caret[0].column.replace(amount);
         self.insert_line(self.caret[0].line(), before);
     }
     /// Create a new line with the remainder of this line getting placed on the new one
@@ -1448,7 +1458,7 @@ impl TextInput {
         let before: String =
             self.indent_char.repeat_value(amount).iter().collect();
         self.caret[0].line.add(1);
-        self.caret[0].column.set(amount);
+        self.caret[0].column.replace(amount);
         self.insert_line(self.caret[0].line(), before + &after);
     }
     /// Move the caret down if it is under a line
@@ -1470,15 +1480,15 @@ impl TextInput {
     /// Swap the postion of the cursor with another line
     pub fn swap_caret_position(&mut self, line1: usize, line2: usize) {
         if self.caret[0].line() == line1 {
-            self.caret[0].line.set(line2);
+            self.caret[0].line.replace(line2);
         } else if self.caret[0].line() == line2 {
-            self.caret[0].line.set(line1);
+            self.caret[0].line.replace(line1);
         }
     }
     /// Undo the last action
     pub fn undo(&mut self) {
         // println!("{}", self.current_state);
-        if self.current_state > 0 && !self.last_states.is_empty() {
+        if !self.last_states.is_empty() {
             //println!("Set");
             self.current_state -= 1;
             (self.text, self.caret) =
@@ -1780,8 +1790,9 @@ impl TextInput {
         &mut self,
         new_keycodes: &[KeyCode],
         held_keycodes: &[KeyCode],
-        info: &ModuleInputs,
-    ) -> (bool, bool, Option<mirl::platform::file_system::FileData>) {
+        info: &ModuleUpdateInfo,
+    ) -> (bool, (bool, bool, Option<mirl::platform::file_system::FileData>))
+    {
         let mut new_keycodes = new_keycodes.to_vec();
 
         //let mut simplify_highlighted = false;
@@ -1811,15 +1822,18 @@ impl TextInput {
         for i in &new_actions {
             i.remove_required_keys(&mut new_keycodes);
         }
+        let mut changed = !new_actions.is_empty() || !new_keycodes.is_empty();
 
         let return_value = self.handle_keybinds(&new_actions);
 
         if let Some(clipboard_data) = info.clipboard_data {
             if let Ok(text_data) = clipboard_data.as_string() {
+                changed = true;
                 self.write(&text_data.to_keycodes(), shift_down);
             } else if let Some(list_string) =
                 clipboard_data.as_list_of_strings()
             {
+                changed = true;
                 for i in list_string {
                     self.write(&i.to_keycodes(), shift_down);
                     self.next_line_without_shifting();
@@ -1828,436 +1842,17 @@ impl TextInput {
         }
 
         self.write(&new_keycodes, shift_down);
-        return_value
-
-        // if control_down && new_keycodes.contains(&KeyCode::V) {
-        //     return (false, true, None);
-        // }
-        // let mut new_clipboard_data = None;
-        // let c_pressed = new_keycodes.contains(&KeyCode::C);
-        // let x_pressed = new_keycodes.contains(&KeyCode::X);
-        // let copy = c_pressed || x_pressed;
-
-        // if control_down && copy {
-        //     new_keycodes.retain(|x| *x != KeyCode::C);
-
-        //     new_clipboard_data =
-        //         Some(mirl::platform::file_system::FileData::from_bytes(
-        //             self.text[self.caret[0]_position.0].clone().into(),
-        //             mirl::platform::file_system::DataType::Text,
-        //         ));
-        //     if x_pressed {
-        //         new_keycodes.retain(|x| *x != KeyCode::X);
-        //         self.text.remove(self.caret[0]_position.0);
-        //         if self.text.is_empty() {
-        //             self.text.push(String::new());
-        //         }
-        //         if self.caret[0]_position.0 >= self.text.len() {
-        //             self.caret[0]_position.0 = self.text.len().saturating_sub(1);
-        //             self.caret[0]_position.1 =
-        //                 self.text[self.text.len() - 1].chars().count();
-        //         }
-        //     }
-        // }
-        // // else if new_keycodes.contains(&KeyCode::D)
-        // //   && self.caret[0]_positions.len() == 1
-        // //   && self.text.len() < self.lines
-        // // {
-        // //   let v = self.caret[0]_positions[0].0;
-        // //   let text = self.text[v].clone();
-        // //   self.text.insert(v, text);
-        // // }
-
-        // if let Some(clipboard_data) = info.clipboard_data
-        //     && let Ok(text_data) = clipboard_data.as_string()
-        // {
-        //     self.handle_keycodes(&text_data.to_keycodes(), &Vec::new(), info);
-        // }
-
-        // let action_on_highlighted = false && self.is_something_selected();
-        // if action_on_highlighted {
-        //     // let mut destroy_highlight = false;
-        //     // for keycode in new_keycodes {
-        //     //   if let Some(value) = keycode.to_user_friendly_string() {
-        //     //     destroy_highlight = true;
-        //     //     self.caret[0]_positions = Vec::new();
-        //     //     for (vertical, highlights) in
-        //     //       &mut self.highlighted.iter().enumerate()
-        //     //     {
-        //     //       for (pos, width) in highlights {
-        //     //         let before: String = self.text[vertical]
-        //     //           .chars()
-        //     //           .take(*pos)
-        //     //           .collect();
-        //     //         let after: String = self.text[vertical]
-        //     //           .chars()
-        //     //           .skip(*pos)
-        //     //           .collect();
-        //     //         if shift_down {
-        //     //           self.text[vertical] =
-        //     //             before + &value.to_uppercase() + &after;
-        //     //         } else {
-        //     //           self.text[vertical] =
-        //     //             before + &value.to_lowercase() + &after;
-        //     //         }
-        //     //         self.caret[0]_positions
-        //     //           .push((vertical, pos + width + 1));
-        //     //       }
-        //     //     }
-        //     //   } else {
-        //     //     match keycode {
-        //     //       KeyCode::Backspace => {}
-        //     //       _ => {}
-        //     //     }
-        //     //   }
-        //     // }
-        // } else {
-        //     for keycode in &*new_keycodes {
-        //         if let Some(value) = keycode.to_user_friendly_string() {
-        //             let before: String = self.text[self.caret[0]_position.0]
-        //                 .chars()
-        //                 .take(self.caret[0]_position.1)
-        //                 .collect();
-        //             let after: String = self.text[self.caret[0]_position.0]
-        //                 .chars()
-        //                 .skip(self.caret[0]_position.1)
-        //                 .collect();
-        //             if shift_down {
-        //                 self.text[self.caret[0]_position.0] =
-        //                     before + &value.to_uppercase() + &after;
-        //             } else {
-        //                 self.text[self.caret[0]_position.0] =
-        //                     before + &value.to_lowercase() + &after;
-        //             }
-        //             self.caret[0]_position.1 += 1;
-        //         } else {
-        //             match keycode {
-        //                 KeyCode::Backspace => {
-        //                     let previous = self.caret[0]_position.1;
-        //                     if self.caret[0]_position.1 == 0
-        //                         && previous == 0
-        //                         && self.caret[0]_position.0 != 0
-        //                     {
-        //                         let text =
-        //                             self.text.remove(self.caret[0]_position.0);
-        //                         self.caret[0]_position.0 =
-        //                             self.caret[0]_position.0.saturating_sub(1);
-
-        //                         self.caret[0]_position.1 = self.text
-        //                             [self.caret[0]_position.0]
-        //                             .chars()
-        //                             .count();
-        //                         if control_down {
-        //                             let del = mirl::misc::skipping_text_type::skip_char_type_backward(
-        //               &self.text[self.caret[0]_position.0],
-        //               self.caret[0]_position.1,
-        //             );
-        //                             self.text[self.caret[0]_position.0]
-        //                                 .truncate(del);
-        //                         }
-
-        //                         self.text[self.caret[0]_position.0]
-        //                             .push_str(&text);
-
-        //                         self.caret[0]_position.1 =
-        //                             self.caret[0]_position.1.saturating_sub(1);
-        //                     } else if previous != 0 || self.remove_behind {
-        //                         if control_down {
-        //                             let del = mirl::misc::skipping_text_type::skip_char_type_backward(
-        //               &self.text[self.caret[0]_position.0],
-        //               self.caret[0]_position.1,
-        //             );
-        //                             let amount = self.caret[0]_position.1 - del;
-        //                             self.text[self.caret[0]_position.0]
-        //                                 .remove_chars_at(del, amount);
-        //                             self.caret[0]_position.1 = self
-        //                                 .caret_position
-        //                                 .1
-        //                                 .saturating_sub(amount);
-        //                         } else {
-        //                             self.text[self.caret[0]_position.0]
-        //                                 .remove_char_at(self.caret[0]_position.1);
-
-        //                             self.caret[0]_position.1 =
-        //                                 self.caret[0]_position.1.saturating_sub(1);
-        //                         }
-        //                     }
-        //                 }
-        //                 KeyCode::Delete => {
-        //                     if shift_down && control_down {
-        //                     } else if shift_down {
-        //                         if self.text.len() > 1 {
-        //                             self.text.remove(self.caret[0]_position.0);
-        //                             self.caret[0]_position.0 = self
-        //                                 .caret_position
-        //                                 .0
-        //                                 .min(self.text.len().saturating_sub(1));
-        //                         } else {
-        //                             self.text[0] = String::new();
-        //                         }
-        //                     } else if self.caret[0]_position.1
-        //                         == self.text[self.caret[0]_position.0]
-        //                             .chars()
-        //                             .count()
-        //                         && self.caret[0]_position.0 != self.text.len() - 1
-        //                     {
-        //                         let next_line =
-        //                             self.text.remove(self.caret[0]_position.0 + 1);
-        //                         self.text[self.caret[0]_position.0]
-        //                             .push_str(&next_line);
-        //                     } else {
-        //                         let chars_to_remove = if control_down {
-        //                             mirl::misc::skipping_text_type::skip_char_type(
-        //               &self.text[self.caret[0]_position.0],
-        //               self.caret[0]_position.1,
-        //             )-self.caret[0]_position.1
-        //                         } else {
-        //                             1
-        //                         };
-        //                         self.text[self.caret[0]_position.0]
-        //                             .remove_chars_at(
-        //                                 self.caret[0]_position.1,
-        //                                 chars_to_remove,
-        //                             );
-        //                         self.caret[0]_position.1 =
-        //                             self.caret[0]_position.1.min(
-        //                                 self.text[self.caret[0]_position.0]
-        //                                     .chars()
-        //                                     .count(),
-        //                             );
-        //                     }
-        //                 }
-        //                 KeyCode::LeftArrow => {
-        //                     if shift_down {
-        //                         if self.is_something_selected() {
-        //                             // Check if caret is overlapping with tail
-        //                             if self.caret[0]_position.0
-        //                                 == self.highlighted.1.line
-        //                                 && self.caret[0]_position.1
-        //                                     == self.highlighted.1.column
-        //                             {
-        //                                 self.caret[0]_position.1 = self
-        //                                     .caret_position
-        //                                     .1
-        //                                     .saturating_sub(1);
-        //                                 self.highlighted.1.column =
-        //                                     self.caret[0]_position.1;
-        //                             }
-        //                         } else {
-        //                             // Setting head
-        //                             self.highlighted.0.line =
-        //                                 self.caret[0]_position.0;
-        //                             self.highlighted.0.column =
-        //                                 self.caret[0]_position.1;
-
-        //                             self.caret[0]_position.1 =
-        //                                 self.caret[0]_position.1.saturating_sub(1);
-
-        //                             // Setting tail
-        //                             self.highlighted.1.line =
-        //                                 self.caret[0]_position.0;
-        //                             self.highlighted.1.column =
-        //                                 self.caret[0]_position.1;
-        //                         }
-        //                     } else {
-        //                         if self.caret[0]_position.1 == 0
-        //                             && self.caret[0]_position.0 != 0
-        //                         {
-        //                             self.caret[0]_position.0 =
-        //                                 self.caret[0]_position.0.saturating_sub(1);
-
-        //                             self.caret[0]_position.1 = self.text
-        //                                 [self.caret[0]_position.0]
-        //                                 .chars()
-        //                                 .count();
-        //                         } else if control_down {
-        //                             self.caret[0]_position.1 =
-        //         mirl::misc::skipping_text_type::skip_char_type_backward(
-        //           &self.text[self.caret[0]_position.0],
-        //           self.caret[0]_position.1,
-        //         );
-        //                         } else {
-        //                             self.caret[0]_position.1 =
-        //                                 self.caret[0]_position.1.saturating_sub(1);
-        //                         }
-        //                         self.highlighted =
-        //                             std::default::Default::default();
-        //                     }
-        //                 }
-        //                 KeyCode::RightArrow => {
-        //                     let length = self.text[self.caret[0]_position.0]
-        //                         .chars()
-        //                         .count();
-        //                     if self.caret[0]_position.1 == length
-        //                         && self.caret[0]_position.0 != self.text.len() - 1
-        //                     {
-        //                         self.caret[0]_position.0 = self
-        //                             .text
-        //                             .len()
-        //                             .min(self.caret[0]_position.0 + 1);
-        //                         self.caret[0]_position.1 = 0;
-        //                     } else if control_down {
-        //                         self.caret[0]_position.1 =
-        //             mirl::misc::skipping_text_type::skip_char_type(
-        //               &self.text[self.caret[0]_position.0],
-        //               self.caret[0]_position.1,
-        //             );
-        //                     } else {
-        //                         self.caret[0]_position.1 = self
-        //                             .caret_position
-        //                             .1
-        //                             .saturating_add(1)
-        //                             .min(
-        //                                 self.text[self.caret[0]_position.0]
-        //                                     .chars()
-        //                                     .count(),
-        //                             );
-        //                     }
-        //                 }
-        //                 KeyCode::UpArrow => {
-        //                     if alt_down {
-        //                         let current = self.caret[0]_position.0;
-        //                         let new =
-        //                             self.caret[0]_position.0.saturating_sub(1);
-        //                         if shift_down {
-        //                             if self.text.len() < self.lines {
-        //                                 let text = self.text[current].clone();
-        //                                 self.text.insert(current, text);
-        //                             }
-        //                         } else {
-        //                             self.text.swap(current, new);
-        //                             self.caret[0]_position.0 = new;
-        //                         }
-        //                     } else if self.caret[0]_position.0 == 0 {
-        //                         self.caret[0]_position.1 = 0;
-        //                     } else {
-        //                         self.caret[0]_position.0 -= 1;
-        //                         self.caret[0]_position.1 =
-        //                             self.caret[0]_position.1.min(
-        //                                 self.text[self.caret[0]_position.0]
-        //                                     .chars()
-        //                                     .count(),
-        //                             );
-        //                     }
-        //                 }
-        //                 KeyCode::DownArrow => {
-        //                     if alt_down {
-        //                         let current = self.caret[0]_position.0;
-        //                         let new = (self.caret[0]_position.0 + 1)
-        //                             .min(self.text.len() - 1);
-        //                         if shift_down {
-        //                             if self.text.len() < self.lines {
-        //                                 let text = self.text[current].clone();
-        //                                 self.text.insert(current, text);
-        //                                 self.caret[0]_position.0 = current + 1;
-        //                             }
-        //                         } else {
-        //                             self.text.swap(current, new);
-        //                             self.caret[0]_position.0 = new;
-        //                         }
-        //                     } else if self.caret[0]_position.0
-        //                         == self.text.len() - 1
-        //                     {
-        //                         self.caret[0]_position.1 = self.text
-        //                             [self.caret[0]_position.0]
-        //                             .chars()
-        //                             .count();
-        //                     } else {
-        //                         self.caret[0]_position.0 += 1;
-        //                         self.caret[0]_position.1 =
-        //                             self.caret[0]_position.1.min(
-        //                                 self.text[self.caret[0]_position.0]
-        //                                     .chars()
-        //                                     .count(),
-        //                             );
-        //                     }
-        //                 }
-        //                 KeyCode::Enter => {
-        //                     if self.text.len() < self.lines {
-        //                         if control_down {
-        //                             self.text.insert(
-        //                                 self.caret[0]_position.0 + 1,
-        //                                 String::new(),
-        //                             );
-        //                         } else {
-        //                             // Take the text that is right to the caret and throw it on a new line
-        //                             let text_left = self.text
-        //                                 [self.caret[0]_position.0]
-        //                                 .chars()
-        //                                 .skip(self.caret[0]_position.1)
-        //                                 .collect();
-        //                             self.text[self.caret[0]_position.0] = self
-        //                                 .text[self.caret[0]_position.0]
-        //                                 .chars()
-        //                                 .take(self.caret[0]_position.1)
-        //                                 .collect();
-        //                             self.text.insert(
-        //                                 self.caret[0]_position.0 + 1,
-        //                                 text_left,
-        //                             );
-        //                         }
-        //                         if self.caret[0]_position.0 < self.text.len() {
-        //                             self.caret[0]_position.0 += 1;
-        //                         }
-        //                         self.caret[0]_position.1 = 0;
-        //                     }
-        //                 }
-        //                 KeyCode::Tab => {
-        //                     let text_left: String = self.text
-        //                         [self.caret[0]_position.0]
-        //                         .chars()
-        //                         .take(self.caret[0]_position.1)
-        //                         .collect();
-
-        //                     let text_right: String = self.text
-        //                         [self.caret[0]_position.0]
-        //                         .chars()
-        //                         .skip(self.caret[0]_position.1)
-        //                         .collect();
-
-        //                     let length =
-        //                         text_left.chars().count() % self.indent_length;
-        //                     let repeats = self.indent_length - length;
-        //                     let insertion = " ".repeat(repeats);
-
-        //                     let text = text_left + &insertion + &text_right;
-        //                     self.caret[0]_position.1 += repeats;
-        //                     self.text[self.caret[0]_position.0] = text;
-        //                 }
-
-        //                 _ => {}
-        //             }
-        //         }
-        //     }
-        // }
-
-        // if control_down {
-        //     if new_keycodes.contains(&KeyCode::Z) {
-        //         state_change = true;
-        //         self.current_state = self.current_state.saturating_sub(1);
-        //         self.text = self.last_states[self.current_state].clone();
-        //     } else if new_keycodes.contains(&KeyCode::Y) {
-        //         state_change = true;
-        //         self.current_state = self
-        //             .last_states
-        //             .len()
-        //             .saturating_sub(1)
-        //             .min(self.current_state + 1);
-        //         self.text = self.last_states[self.current_state].clone();
-        //     }
-        // }
-        // // if simplify_highlighted {
-        // //   for x in &mut self.highlighted {
-        // //     *x = merge_selections(x);
-        // //   }
-        // // }
-        // (state_change, false, new_clipboard_data)
+        (changed, return_value)
     }
 }
 
 impl DearMirlGuiModule for TextInput {
     #[allow(clippy::too_many_lines)]
-    fn draw(&self, formatting: &crate::Formatting) -> Buffer {
+    fn draw(
+        &mut self,
+        formatting: &crate::Formatting,
+        info: &crate::ModuleDrawInfo,
+    ) -> (Buffer, InsertionMode) {
         fn shimmer(buffer: &Buffer, xy: (usize, usize), new_color: u32) {
             let under = buffer.get_pixel_unsafe(xy);
             buffer.set_pixel_safe(
@@ -2271,7 +1866,7 @@ impl DearMirlGuiModule for TextInput {
         let text_color = formatting.text_color;
         let text_size_mul = 0.8;
         let background_color_change = -5.0;
-        let background_color = formatting.secondary_color;
+        let background_color = formatting.foreground_color;
         let caret_color = formatting.text_color;
         let caret_width = self.line_height / 10;
         let placeholder_color_change = -30.0;
@@ -2327,18 +1922,21 @@ impl DearMirlGuiModule for TextInput {
                 );
             }
         }
-        if self.caret[0].is_highlighting() {
-            let (line_start, line_end, front_pos, back_pos) = {
+        if self.caret[0].is_highlighting()
+            && let Some((line_start, line_end, front_pos, back_pos)) = {
                 let head = self.caret[0].highlight_pos.get();
                 let tail = self.caret[0].to_position();
-                if head.line > tail.line {
-                    (tail.line, head.line, tail.column, head.column)
+                if head == tail {
+                    None
+                } else if head.line > tail.line {
+                    Some((tail.line, head.line, tail.column, head.column))
                 } else if tail.line > head.line || tail.column > head.column {
-                    (head.line, tail.line, head.column, tail.column)
+                    Some((head.line, tail.line, head.column, tail.column))
                 } else {
-                    (head.line, tail.line, tail.column, head.column)
+                    Some((head.line, tail.line, tail.column, head.column))
                 }
-            };
+            }
+        {
             let total_lines = line_end - line_start;
             let text_until = self.text[line_start]
                 .chars()
@@ -2451,7 +2049,7 @@ impl DearMirlGuiModule for TextInput {
             }
         }
 
-        if self.selected {
+        if self.selected == info.container_id {
             let before = self.text[self.caret[0].line()]
                 .chars()
                 .take(self.caret[0].column())
@@ -2503,7 +2101,7 @@ impl DearMirlGuiModule for TextInput {
         //   &formatting.font,
         // );
 
-        buffer
+        (buffer, InsertionMode::Simple)
     }
     fn get_height(&self, formatting: &crate::Formatting) -> isize {
         ((self.line_height + formatting.vertical_margin) * self.lines
@@ -2512,35 +2110,48 @@ impl DearMirlGuiModule for TextInput {
     fn get_width(&self, _formatting: &crate::Formatting) -> isize {
         self.width as isize
     }
-    fn update(&mut self, info: &crate::ModuleInputs) -> crate::GuiOutput {
+    #[allow(clippy::too_many_lines)]
+    fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         let mut cursor_style = None;
+        let formatting = &get_formatting();
         let collision = mirl::math::collision::Rectangle::<_, false>::new(
             0,
             0,
-            self.get_width(info.formatting),
-            self.get_height(info.formatting),
+            self.get_width(formatting),
+            self.get_height(formatting),
         );
-        if info.focus_taken {
-            self.selected = false;
+        if info.focus_taken == FocusTaken::FunctionallyTaken
+            && info.container_id == self.selected
+        {
+            self.selected = 0;
             self.caret[0].reset_highlighted();
             self.caret[0].restore_default();
         }
-        let mut scroll_took_focus = false;
+        let mut took_functional_focus = false;
+        //println!("{} {}", self.selected, info.container_id);
 
         if let Some(mouse_position) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_position);
             if collides {
-                cursor_style = CursorStyle::Text.into();
+                cursor_style = Some(CursorStyle::Text);
 
-                if let Some(scroll) = info.mouse_scroll {
+                if info.container_id == self.selected
+                    && let Some(scroll) = info.mouse_scroll
+                {
                     let shift_pressed =
                         info.pressed_keys.contains(&KeyCode::LeftShift)
                             || info.pressed_keys.contains(&KeyCode::RightShift);
-                    scroll_took_focus = true;
-                    self.handle_scroll(scroll, shift_pressed);
+                    if scroll != (0, 0) {
+                        took_functional_focus = true;
+                        self.handle_scroll(scroll, shift_pressed);
+                    }
                 }
-                if info.mouse_info.left.clicked {
-                    self.selected = true;
+                if info.mouse_info.left.clicked
+                    && (self.selected == 0
+                        || self.selected == info.container_id)
+                {
+                    took_functional_focus = true;
+                    self.selected = info.container_id;
                     let vertical = ((mouse_position.1 - self.camera.1)
                         as usize
                         / self.line_height)
@@ -2550,25 +2161,33 @@ impl DearMirlGuiModule for TextInput {
                         super::misc::get_closest_char_pos_to_mouse_pos(
                             &self.text[vertical],
                             self.line_height as f32,
-                            &info.formatting.font,
+                            &formatting.font,
                             (mouse_position.0
-                                - self.get_horizontal_text_offset(info.formatting))
+                                - self.get_horizontal_text_offset(formatting))
                                 as f32,
                         );
-                    self.caret[0] = Caret::new(vertical, horizontal);
+                    let new_caret = Caret::new(vertical, horizontal);
+                    if self.caret[0] == new_caret {
+                        self.caret[0].select_structure(self);
+                    } else {
+                        self.caret[0] = new_caret;
+                    }
                 }
-            } else if info.mouse_info.left.clicked {
-                self.selected = false;
+            } else if info.mouse_info.left.clicked
+                && self.selected == info.container_id
+            {
+                self.selected = 0;
             }
         }
         if self.read_only {
-            self.selected = false;
+            self.selected = 0;
             cursor_style = None;
         }
+
         let mut request_clipboard_data = false;
         let mut new_clipboard_data = None;
-        if self.selected {
-            self.needs_redraw.set(true);
+        if self.selected == info.container_id {
+            self.needs_redraw.replace(true);
             let new_keys: Vec<KeyCode> = self
                 .last_keys_pressed
                 .get_old_items(info.pressed_keys)
@@ -2582,11 +2201,14 @@ impl DearMirlGuiModule for TextInput {
                     .push((previous_state.clone(), self.caret.clone()));
             }
             let (
-                do_not_save_state,
-                request_clipboard_data_local,
-                new_clipboard_data_local,
+                something_changed,
+                (
+                    do_not_save_state,
+                    request_clipboard_data_local,
+                    new_clipboard_data_local,
+                ),
             ) = self.handle_keycodes(&new_keys, info.pressed_keys, info);
-
+            took_functional_focus = took_functional_focus || something_changed;
             request_clipboard_data = request_clipboard_data_local;
             new_clipboard_data = new_clipboard_data_local;
 
@@ -2602,47 +2224,36 @@ impl DearMirlGuiModule for TextInput {
 
             self.last_keys_pressed.clone_from(info.pressed_keys);
         }
+        let focus_taken: FocusTaken = if took_functional_focus {
+            FocusTaken::FunctionallyTaken
+        } else if self.selected == info.container_id {
+            FocusTaken::VisuallyTaken
+        } else {
+            FocusTaken::FocusFree
+        };
 
         crate::GuiOutput {
             new_clipboard_data,
             new_cursor_position: None,
-            focus_taken: self.selected || scroll_took_focus,
+            focus_taken,
             hide_cursor: false,
-            text_input_selected: self.selected,
+            text_input_selected: self.selected > 0,
             new_cursor_style: cursor_style,
             request_clipboard_data,
         }
     }
     fn need_redraw(&self) -> bool {
         if self.needs_redraw.get() {
-            self.needs_redraw.set(false);
+            self.needs_redraw.replace(false);
             true
         } else {
             false
         }
     }
-    fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
+    fn apply_new_formatting(&mut self, formatting: &crate::Formatting) {
+        self.recalculate_line_number_offset(formatting);
+    }
+    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
+    }
 }
-// /// If shift + control + left are pressed, shift + left should be discarded
-// #[must_use]
-// pub fn sort_actions(actions: Vec<Actions>) -> Vec<Actions> {
-//     let mut actions = actions;
-
-//     actions.sort_by_key(|x| x.keybind().get_priority());
-
-//     actions.reverse();
-//     let mut new_actions = Vec::new();
-//     for i in actions.iter().rev() {
-//         if !actions.iter().any(|y| {
-//             !std::ptr::eq(i, y) // God damn you self checking
-//                 && i.keybind().does_other_keybind_eat_this_one(y.keybind())
-//         }) {
-//             new_actions.push(i.clone());
-//         }
-//     }
-//     // if !new_actions.is_empty() {
-//     //     println!("{:#?} \n {}", new_actions, new_actions.len());
-//     // }
-
-//     new_actions
-// }
