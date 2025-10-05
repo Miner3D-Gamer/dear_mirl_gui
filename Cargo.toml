@@ -14,7 +14,7 @@ mirl = { version = ">=4.3.0", default-features = false, features = [
     "keycode_support",
 ] }
 
-fontdue = ">=9.3"
+fontdue = ">=0.9.3"
 indexmap = ">=2.11"
 num-traits = "0.2"
 
