@@ -10,7 +10,7 @@ pub fn get_available_id() -> usize {
 }
 
 use crate::{
-    DearMirlGuiModule, Formatting, GuiReturnsModule, ModulePath,
+    DearMirlGuiModule, Formatting, GuiReturnsModule, ModulePath, WhatAmI,
     gui::ModuleContainer,
 };
 
@@ -23,13 +23,13 @@ pub static MODULES_IMAGE_CACHE: ModuleImageCache =
     std::sync::LazyLock::new(|| std::sync::RwLock::new(Vec::new()));
 /// Convert from a generic id to a index
 pub static MODULE_INDEX: std::sync::LazyLock<
-    std::sync::RwLock<std::collections::HashMap<String, usize>>,
+    std::sync::RwLock<std::collections::HashMap<u32, usize>>,
 > = std::sync::LazyLock::new(|| {
     std::sync::RwLock::new(std::collections::HashMap::new())
 });
 /// Convert from a generic id to a index
-pub fn get_idx_of_id(name: &str) -> Option<usize> {
-    MODULE_INDEX.read().ok()?.get(name).copied()
+pub fn get_idx_of_id(name: u32) -> Option<usize> {
+    MODULE_INDEX.read().ok()?.get(&name).copied()
 }
 type ModuleManager =
     std::sync::LazyLock<std::sync::RwLock<Vec<ModuleContainer>>>;
@@ -64,9 +64,10 @@ pub fn get_formatting() -> std::sync::Arc<Formatting> {
 
 /// Add a module to the global context
 pub fn register_module<T: DearMirlGuiModule + 'static>(
-    name: &str,
+    //  name: u32,
     module: T,
 ) -> ModulePath<T> {
+    let path = ModulePath::new();
     let idx;
     let mut module = module;
     let formatting = get_formatting();
@@ -86,14 +87,14 @@ pub fn register_module<T: DearMirlGuiModule + 'static>(
     }
 
     if let Ok(mut index_map) = MODULE_INDEX.write() {
-        index_map.insert(name.to_string(), idx);
+        index_map.insert(path.id, idx);
     }
 
-    ModulePath::new(name)
+    path
 }
 /// Remove a module from the global context
-pub fn remove_module(name: &str) -> bool {
-    let Some(idx) = get_idx_of_id(name) else {
+pub fn remove_module<T>(path: &ModulePath<T>) -> bool {
+    let Some(idx) = get_idx_of_id(path.id) else {
         return false;
     };
 
@@ -110,7 +111,7 @@ pub fn remove_module(name: &str) -> bool {
     }
 
     if let Ok(mut index_map) = MODULE_INDEX.write() {
-        index_map.remove(name);
+        index_map.remove(&path.id);
         for (_, v) in index_map.iter_mut() {
             if *v > idx {
                 *v -= 1;
@@ -326,6 +327,7 @@ pub enum BufferState {
 /// How a module image should be inserted into the cache
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InsertionMode {
+    #[deprecated = "This causes visual desync, please use InsertionMode::ReplaceAll until it is fixed"]
     /// Insert without any duplicate checking
     Simple,
     /// See if any other buffer this module has produced is equivalent to this one
@@ -349,7 +351,7 @@ pub fn needs_redraw() -> bool {
 }
 /// Get a module by name and execute a function on it (immutable access)
 pub fn get_module<R>(
-    name: &str,
+    name: u32,
     f: impl FnOnce(&dyn DearMirlGuiModule) -> R,
 ) -> Option<R> {
     let idx = get_idx_of_id(name)?;
@@ -360,10 +362,10 @@ pub fn get_module<R>(
 
 /// Get a module by name and execute a function on it (mutable access)
 pub fn get_module_mut<R>(
-    name: &str,
+    path: u32,
     f: impl FnOnce(&mut dyn DearMirlGuiModule) -> R,
 ) -> Option<R> {
-    let idx = get_idx_of_id(name)?;
+    let idx = get_idx_of_id(path)?;
     let modules = MODULES.read().ok()?;
     let module_container = modules.get(idx)?;
     Some(module_container.with_ref_mut(f))
@@ -385,11 +387,11 @@ pub fn get_module_mut<R>(
 /// }
 /// ```
 #[must_use]
-pub fn get_module_as<T: 'static, R>(
+pub fn get_module_as<T: 'static + WhatAmI, R>(
     module_path: &ModulePath<T>,
     f: impl FnOnce(&T) -> R,
 ) -> GuiReturnsModule<R> {
-    let module = get_module(&module_path.id, |module| {
+    let module = get_module(module_path.id, |module| {
         (
             module.as_any().downcast_ref::<T>().map(f),
             std::any::type_name::<T>(),
@@ -397,14 +399,19 @@ pub fn get_module_as<T: 'static, R>(
         )
     });
     module.map_or_else(
-        || GuiReturnsModule::UnableToFindID(module_path.id.clone()),
+        || {
+            GuiReturnsModule::UnableToFindID(
+                module_path.id,
+                std::any::type_name::<T>().to_string(),
+            )
+        },
         |value| {
             let (val, wrongly_used, correct) = value;
             val.map_or_else(
                 || GuiReturnsModule::CastingAsWrongModule {
                     wrong: wrongly_used.to_string(),
                     correct: correct.to_string(),
-                    id: module_path.id.clone(),
+                    id: module_path.id,
                 },
                 |output| GuiReturnsModule::AllGood(output),
             )
@@ -431,22 +438,28 @@ pub fn get_module_as_mut<T: 'static, R>(
     module_path: &ModulePath<T>,
     f: impl FnOnce(&mut T) -> R,
 ) -> GuiReturnsModule<R> {
-    let module = get_module_mut(&module_path.id, |module| {
+    let module = get_module_mut(module_path.id, |module| {
         (
             module.as_any_mut().downcast_mut::<T>().map(f),
-            std::any::type_name::<T>(),
-            module.what_am_i(),
+            std::any::type_name::<T>().to_string(),
+            //module.what_am_i().to_string(),
+            mirl::misc::type_name_of_val(&module).to_string(),
         )
     });
     module.map_or_else(
-        || GuiReturnsModule::UnableToFindID(module_path.id.clone()),
+        || {
+            GuiReturnsModule::UnableToFindID(
+                module_path.id,
+                std::any::type_name::<T>().to_string(),
+            )
+        },
         |value| {
             let (val, wrongly_used, correct) = value;
             val.map_or_else(
                 || GuiReturnsModule::CastingAsWrongModule {
-                    wrong: wrongly_used.to_string(),
-                    correct: correct.to_string(),
-                    id: module_path.id.clone(),
+                    wrong: wrongly_used,
+                    correct,
+                    id: module_path.id,
                 },
                 |output| GuiReturnsModule::AllGood(output),
             )

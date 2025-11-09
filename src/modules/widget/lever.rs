@@ -1,5 +1,5 @@
 use mirl::{
-    graphics::rgba_u32_to_u32,
+    graphics::rgba_to_u32,
     math::{get_center_position_of_object_for_object, interpolate},
 };
 
@@ -55,7 +55,7 @@ impl Lever {
 
 impl DearMirlGuiModule for Lever {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     #[allow(clippy::too_many_lines)]
@@ -65,7 +65,7 @@ impl DearMirlGuiModule for Lever {
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
         self.needs_redraw.set(false);
-        let buffer = Buffer::new_empty(self.width, self.height);
+        let mut buffer = Buffer::new_empty((self.width, self.height));
         let handle_color = formatting.foreground_color;
         let base_color = mirl::graphics::interpolate_color_rgb_u32_f32(
             formatting.background_color,
@@ -73,7 +73,7 @@ impl DearMirlGuiModule for Lever {
             0.5,
         );
         let hole_color = mirl::graphics::color_presets::BLACK;
-        let stick_color = rgba_u32_to_u32(100, 60, 30, 255);
+        let stick_color = rgba_to_u32(100, 60, 30, 255);
 
         let base_width = ((self.width as f32) * self.base_size) as usize;
         let base_height =
@@ -107,21 +107,17 @@ impl DearMirlGuiModule for Lever {
         );
 
         render::draw_rectangle::<true>(
-            &buffer,
-            base_offset.0 as isize,
-            base_offset.1 as isize,
-            base_width as isize,
-            base_height as isize,
+            &mut buffer,
+            (base_offset.0 as isize, base_offset.1 as isize),
+            (base_width as isize, base_height as isize),
             base_color,
         );
 
         let hole_y = base_offset.1 + hole_offset.1;
         render::draw_rectangle::<true>(
-            &buffer,
-            (base_offset.0 + hole_offset.0) as isize,
-            hole_y as isize,
-            hole_width as isize,
-            hole_height as isize,
+            &mut buffer,
+            ((base_offset.0 + hole_offset.0) as isize, hole_y as isize),
+            (hole_width as isize, hole_height as isize),
             hole_color,
         );
 
@@ -156,7 +152,7 @@ impl DearMirlGuiModule for Lever {
 
         if stick_height > 0 {
             render::execute_at_rectangle::<true>(
-                &buffer,
+                &mut buffer,
                 (stick_x, stick_y),
                 (stick_width, stick_height),
                 handle_color,
@@ -187,21 +183,25 @@ impl DearMirlGuiModule for Lever {
         }
 
         render::draw_rectangle::<true>(
-            &buffer,
-            handle_offset.0 as isize,
-            handle_pos,
-            handle_width as isize,
-            handle_height as isize,
+            &mut buffer,
+            (handle_offset.0 as isize, handle_pos),
+            (handle_width as isize, handle_height as isize),
             handle_color,
         );
 
         (buffer, InsertionMode::ReplaceAll)
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         if info.focus_taken.is_focus_taken()
@@ -258,14 +258,14 @@ impl DearMirlGuiModule for Lever {
             handle_min_pos as f32,
             handle_max_pos as f32,
             self.elevation,
-        ) as isize;
+        ) as crate::DearMirlGuiCoordinateType;
 
         let handle_collision: mirl::math::collision::Rectangle<_, true> =
             mirl::math::collision::Rectangle::new(
-                handle_offset.0 as isize,
-                handle_pos,
-                handle_width as isize,
-                handle_height as isize,
+                handle_offset.0 as i32,
+                handle_pos as i32,
+                handle_width as i32,
+                handle_height as i32,
             );
         let collides = handle_collision.does_area_contain_point(mouse_pos);
 
@@ -275,13 +275,14 @@ impl DearMirlGuiModule for Lever {
             self.selected = info.container_id;
 
             let target = if false {
-                let bottom = handle_height as isize;
-                let top = (handle_offset.1 + hole_offset.1) as isize;
+                let bottom = handle_height as i32;
+                let top = (handle_offset.1 + hole_offset.1)
+                    as crate::DearMirlGuiCoordinateType;
 
                 let adjusted_mouse_pos = mouse_pos.1 - bottom;
                 adjusted_mouse_pos as f32 / top as f32
             } else if mouse_pos.1
-                > (handle_half_height + handle_offset.1) as isize
+                > (handle_half_height + handle_offset.1) as i32
             {
                 1.0
                 // return crate::GuiOutput::default(
@@ -316,7 +317,7 @@ impl DearMirlGuiModule for Lever {
         crate::GuiOutput::empty()
     }
 
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

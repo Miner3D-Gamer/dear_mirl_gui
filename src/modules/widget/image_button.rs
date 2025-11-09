@@ -57,7 +57,7 @@ impl ImageButton {
 }
 
 impl DearMirlGuiModule for ImageButton {
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
 
@@ -67,7 +67,7 @@ impl DearMirlGuiModule for ImageButton {
         info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
         // Get the base image, resized if necessary
-        let buffer = if self.width == self.image.width
+        let mut buffer = if self.width == self.image.width
             && self.height == self.image.height
         {
             self.image.clone()
@@ -93,12 +93,18 @@ impl DearMirlGuiModule for ImageButton {
         (buffer, InsertionMode::Simple)
     }
 
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
 
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
 
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
@@ -113,8 +119,8 @@ impl DearMirlGuiModule for ImageButton {
         let collision = mirl::math::collision::Rectangle::<_, false>::new(
             0,
             0,
-            self.width as isize,
-            self.height as isize,
+            self.width as i32,
+            self.height as i32,
         );
 
         if let Some(mouse_position) = info.mouse_pos {
@@ -164,7 +170,7 @@ impl DearMirlGuiModule for ImageButton {
         }
     }
 
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

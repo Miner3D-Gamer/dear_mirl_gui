@@ -37,7 +37,7 @@ impl<T: NumberDisplayNumberType> NumberDisplay<T> {
 
 impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     fn draw(
@@ -46,9 +46,11 @@ impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
         let text_color = mirl::graphics::color_presets::WHITE;
-        let buffer = Buffer::new_empty_with_color(
-            self.get_width(formatting) as usize,
-            self.get_height(formatting) as usize,
+        let mut buffer = Buffer::new_empty_with_color(
+            (
+                self.get_width(formatting) as usize,
+                self.get_height(formatting) as usize,
+            ),
             formatting.foreground_color,
         );
         let text_height = self.height - (formatting.vertical_margin * 2) as f32;
@@ -64,7 +66,7 @@ impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
         let mut offset = skip as f32 * text_width;
         for char in text.chars() {
             render::draw_text_antialiased::<true>(
-                &buffer,
+                &mut buffer,
                 &char.to_string(),
                 (offset as usize, 0),
                 text_color,
@@ -75,17 +77,24 @@ impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
         }
         (buffer, InsertionMode::ReplaceAll)
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        (self.height as isize / 2) * self.slots as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        (self.height as crate::DearMirlGuiCoordinateType / 2)
+            * self.slots as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         crate::GuiOutput::empty()
     }
 
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

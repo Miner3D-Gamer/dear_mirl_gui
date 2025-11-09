@@ -1,33 +1,40 @@
 [package]
 name = "dear_mirl_gui"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2024"
-description = "`A Dear ImGui` inspired RmGui lib for `Mirl`"
+description = "'A Dear ImGui' inspired RmGui lib for 'Mirl'"
 license = "MIT"
 
 [dependencies]
 
+# reflectable_derive = { path = "../reflectable_derive" }
 
-mirl = { version = ">=4.3.0", default-features = false, features = [
+mirl = { version = ">=5.0.0", default-features = false, features = [
     "font_support",
     "svg_support",
     "keycode_support",
+    "random_support",
 ] }
 
 fontdue = ">=0.9.3"
 indexmap = ">=2.11"
-num-traits = "0.2"
+num-traits = ">=0.2"
 
 
 [features]
 default = []
-#BAD_APPLE = []
+# BAD_APPLE = []
 draw_safe = []
 draw_debug = []
 focus_debug = []
+# f128_support = []
+experimental = ["debug-window"]
 
 debug-window = [
     "mirl/minifb_backend",
     "mirl/system",
     "mirl/cursor_show_hotspot",
 ]
+
+[profile.release]
+debug = true

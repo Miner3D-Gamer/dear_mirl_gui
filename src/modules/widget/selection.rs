@@ -82,7 +82,7 @@ impl DearMirlGuiModule for Selection {
         self.total_height = self.get_total_height(formatting);
         self.width = self.get_total_width(formatting);
     }
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     fn draw(
@@ -94,7 +94,7 @@ impl DearMirlGuiModule for Selection {
         let margin_divider = 5;
         let inner_button_color = mirl::graphics::color_presets::WHITE;
 
-        let buffer = Buffer::new_empty(self.width, self.total_height);
+        let mut buffer = Buffer::new_empty((self.width, self.total_height));
         let mut offset = 0;
         for (idx, i) in self.text.iter().enumerate() {
             let margin = self.height / margin_divider;
@@ -103,43 +103,37 @@ impl DearMirlGuiModule for Selection {
             if self.radio_buttons {
                 let t = self.height / 2;
                 render::draw_circle::<false, true>(
-                    &buffer,
-                    t as isize,
-                    (offset + t) as isize,
+                    &mut buffer,
+                    (t as isize, (offset + t) as isize),
                     t as isize,
                     formatting.foreground_color,
                 );
                 if self.currently_selected[idx] {
                     render::draw_circle::<true, true>(
-                        &buffer,
-                        t as isize,
-                        (offset + t) as isize,
+                        &mut buffer,
+                        (t as isize, (offset + t) as isize),
                         smaller as isize / 2,
                         inner_button_color,
                     );
                 }
             } else {
                 render::draw_rectangle::<{ crate::DRAW_SAFE }>(
-                    &buffer,
-                    0,
-                    offset as isize,
-                    self.height as isize,
-                    self.height as isize,
+                    &mut buffer,
+                    (0, offset as isize),
+                    (self.height as isize, self.height as isize),
                     formatting.foreground_color,
                 );
                 if self.currently_selected[idx] {
                     render::draw_rectangle::<{ crate::DRAW_SAFE }>(
-                        &buffer,
-                        margin as isize,
-                        offset as isize + margin as isize,
-                        smaller as isize,
-                        smaller as isize,
+                        &mut buffer,
+                        (margin as isize, offset as isize + margin as isize),
+                        (smaller as isize, smaller as isize),
                         inner_button_color,
                     );
                 }
             }
             render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
-                &buffer,
+                &mut buffer,
                 i,
                 (self.height + formatting.horizontal_margin, offset),
                 self.color,
@@ -150,11 +144,17 @@ impl DearMirlGuiModule for Selection {
         }
         (buffer, InsertionMode::ReplaceAll)
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.total_height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.total_height as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         if info.focus_taken.is_focus_taken() {
@@ -168,18 +168,18 @@ impl DearMirlGuiModule for Selection {
 
             for (idx, _) in self.text.iter().enumerate() {
                 let collides = if self.radio_buttons {
-                    mirl::math::collision::Circle::<isize, false>::new(
+                    mirl::math::collision::Circle::<i32, false>::new(
                         0,
-                        offset as isize,
-                        self.height as isize,
+                        offset as i32,
+                        self.height as i32,
                     )
                     .does_area_contain_point(mouse_pos)
                 } else {
-                    mirl::math::collision::Rectangle::<isize, false>::new(
+                    mirl::math::collision::Rectangle::<i32, false>::new(
                         0,
-                        offset as isize,
-                        self.height as isize,
-                        self.height as isize,
+                        offset as i32,
+                        self.height as i32,
+                        self.height as i32,
                     )
                     .does_area_contain_point(mouse_pos)
                 };
@@ -214,7 +214,7 @@ impl DearMirlGuiModule for Selection {
         }
     }
 
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

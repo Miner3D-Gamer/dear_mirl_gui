@@ -43,22 +43,28 @@ impl Crank {
             crank_connector_size,
         }
     }
-    fn get_position(&self) -> (isize, isize, isize) {
+    fn get_position(
+        &self,
+    ) -> (
+        crate::DearMirlGuiCoordinateType,
+        crate::DearMirlGuiCoordinateType,
+        crate::DearMirlGuiCoordinateType,
+    ) {
         let distance = 2.5;
-        let offset = (self.size / 2) as isize;
+        let offset = (self.size / 2) as crate::DearMirlGuiCoordinateType;
         let adjusted = (self.rotation * f32::consts::PI)
             .mul_add(2.0, -(f32::consts::PI / 2.0));
         let x = adjusted.cos() * (self.size as f32 / distance);
         let y = adjusted.sin() * (self.size as f32 / distance);
-        let x = offset + x as isize;
-        let y = offset + y as isize;
+        let x = offset + x as crate::DearMirlGuiCoordinateType;
+        let y = offset + y as crate::DearMirlGuiCoordinateType;
         (offset, x, y)
     }
 }
 
 impl DearMirlGuiModule for Crank {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     fn draw(
@@ -73,12 +79,12 @@ impl DearMirlGuiModule for Crank {
         let crank_connector_width =
             (self.size as f32 * self.crank_connector_size) as isize;
 
-        let buffer = Buffer::new_empty(self.size, self.size);
+        let mut buffer = Buffer::new_empty((self.size, self.size));
         //println!("{}", self.size / 2);
         let (offset, x, y) = self.get_position();
         let offset = offset as usize;
         render::draw_circle_outline_with_thickness::<true>(
-            &buffer,
+            &mut buffer,
             offset,
             offset,
             offset / 4,
@@ -86,16 +92,15 @@ impl DearMirlGuiModule for Crank {
             crank_circle_width,
         );
         render::draw_circle::<true, false>(
-            &buffer,
-            x,
-            y,
+            &mut buffer,
+            (x, y).tuple_into(),
             crank_handle_width,
             formatting.foreground_color,
         );
         render::draw_line::<true>(
-            &buffer,
+            &mut buffer,
             (offset, offset),
-            (x, y).tuple_2_into(),
+            (x, y).tuple_into(),
             formatting.foreground_color,
             crank_connector_width,
         );
@@ -113,11 +118,17 @@ impl DearMirlGuiModule for Crank {
         self.needs_redraw.set(true);
         (buffer, InsertionMode::Simple)
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.size as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.size as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.size as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.size as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         // self.rotation += 0.001;
@@ -131,11 +142,11 @@ impl DearMirlGuiModule for Crank {
             return crate::GuiOutput::empty();
         };
         let (offset, x, y) = self.get_position();
-        let collision: mirl::math::collision::Circle<_, false> =
+        let collision: mirl::math::collision::Circle<i32, false> =
             mirl::math::collision::Circle::new(
-                x,
-                y,
-                (self.size as f32 * self.crank_handle_size) as isize,
+                x as i32,
+                y as i32,
+                (self.size as f32 * self.crank_handle_size) as i32,
             );
 
         let mouse_collides = collision.does_area_contain_point(mouse_pos);
@@ -151,8 +162,8 @@ impl DearMirlGuiModule for Crank {
                     1.0,
                 );
             let closest: (f32, f32) = middle
-                .get_closest_point_on_edge(mouse_pos.tuple_2_into())
-                .sub((offset, offset).tuple_2_into());
+                .get_closest_point_on_edge(mouse_pos.tuple_into())
+                .sub((offset, offset).tuple_into());
             let angle = closest.1.atan2(closest.0);
             let prev_rotation = self.rotation;
             self.rotation = ((angle + f32::consts::PI / 2.0)
@@ -191,7 +202,7 @@ impl DearMirlGuiModule for Crank {
         crate::GuiOutput::empty()
     }
 
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

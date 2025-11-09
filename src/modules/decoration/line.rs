@@ -32,20 +32,26 @@ impl Separator {
 
 impl DearMirlGuiModule for Separator {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw
             .set(crate::modules::misc::determine_need_redraw(need_redraw));
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         crate::GuiOutput::empty()
     }
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true
@@ -58,11 +64,11 @@ impl DearMirlGuiModule for Separator {
         formatting: &crate::Formatting,
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
-        let buffer = Buffer::new_empty(self.width, self.height);
+        let mut buffer = Buffer::new_empty((self.width, self.height));
         if self.is_vertical {
             let x = self.width / 2 - self.thickness / 2;
             render::draw_line_straight(
-                &buffer,
+                &mut buffer,
                 (x, 0),
                 self.height,
                 true,
@@ -73,7 +79,7 @@ impl DearMirlGuiModule for Separator {
         } else {
             let y = self.height / 2 - self.thickness / 2;
             render::draw_line_straight(
-                &buffer,
+                &mut buffer,
                 (0, y),
                 self.width,
                 false,

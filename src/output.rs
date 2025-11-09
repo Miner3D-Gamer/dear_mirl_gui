@@ -2,7 +2,6 @@ use mirl::platform::CursorStyle;
 
 use crate::FocusTaken;
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)] // Once again not a state machine
 /// A struct holding every bit of info the `DearMirlGui` struct and every module returns

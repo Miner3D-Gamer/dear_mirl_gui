@@ -1,91 +1,20 @@
 use std::any::TypeId;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::{AnyCasting, Buffer, DearMirlGuiModule, InsertionMode};
-#[allow(clippy::type_complexity)]
-/// A virtual `DearMirlGuiModule` - MAGIC!
-#[derive(Debug, Clone, Copy)]
-pub struct ModuleVTable {
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub draw: fn(
-        &mut dyn DearMirlGuiModule,
-        &crate::Formatting,
-        &crate::ModuleDrawInfo,
-    ) -> (Buffer, InsertionMode),
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub get_height: fn(&dyn DearMirlGuiModule, &crate::Formatting) -> isize,
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub get_width: fn(&dyn DearMirlGuiModule, &crate::Formatting) -> isize,
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub update: fn(
-        &mut dyn DearMirlGuiModule,
-        inputs: &crate::ModuleUpdateInfo,
-    ) -> crate::GuiOutput,
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub need_redraw: fn(&mut dyn DearMirlGuiModule) -> bool,
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub modify_offset_cursor: fn(
-        &mut dyn DearMirlGuiModule,
-        &[ModuleContainer],
-        &Vec<usize>,
-        &crate::Formatting,
-        (&mut isize, &mut isize),
-    ),
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub apply_new_formatting:
-        fn(&mut dyn DearMirlGuiModule, formatting: &crate::Formatting),
-    /// See [`crate::DearMirlGuiModule`] for documentations
-    pub set_need_redraw: fn(&mut dyn DearMirlGuiModule, Vec<(usize, bool)>),
-}
-
-impl ModuleVTable {
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            draw: |item, formatting, info| item.draw(formatting, info),
-            get_height: |item, formatting| item.get_height(formatting),
-            get_width: |item, formatting| item.get_width(formatting),
-            update: |item, inputs| item.update(inputs),
-            need_redraw: |item| item.need_redraw(),
-            modify_offset_cursor: |item,
-                                   modules,
-                                   current_idx,
-                                   formatting,
-                                   current| {
-                item.modify_offset_cursor(
-                    modules,
-                    current_idx,
-                    formatting,
-                    current,
-                );
-            },
-            apply_new_formatting: |item, modules| {
-                item.apply_new_formatting(modules);
-            },
-            set_need_redraw: |item, redraw| {
-                item.set_need_redraw(redraw);
-            },
-        }
-    }
-}
-impl Default for ModuleVTable {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Type-erased container that preserves concrete type access with single storage
 #[derive(Clone, Debug)]
 pub struct ModuleContainer {
     /// Single shared storage
-    pub item: std::rc::Rc<std::cell::RefCell<Box<dyn DearMirlGuiModule>>>,
-    /// Virtual function table for trait methods
-    pub vtable: ModuleVTable,
+    pub item: Rc<RefCell<Box<dyn DearMirlGuiModule>>>,
     /// Type information for safe downcasting
     pub type_id: TypeId,
     /// The type name for debug purposes
     pub type_name: &'static str,
 }
+
 unsafe impl std::marker::Sync for ModuleContainer {}
 #[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl std::marker::Send for ModuleContainer {}
@@ -93,16 +22,13 @@ unsafe impl std::marker::Send for ModuleContainer {}
 impl ModuleContainer {
     /// Create a new module container
     pub fn new<T: DearMirlGuiModule + 'static + AnyCasting>(item: T) -> Self {
-        let type_id = TypeId::of::<T>();
-        let type_name = std::any::type_name::<T>();
-
         Self {
-            item: std::rc::Rc::new(std::cell::RefCell::new(Box::new(item))),
-            vtable: ModuleVTable::new(),
-            type_id,
-            type_name,
+            item: Rc::new(RefCell::new(Box::new(item))),
+            type_id: TypeId::of::<T>(),
+            type_name: std::any::type_name::<T>(),
         }
     }
+
     /// Safe downcasting to concrete type with closure (immutable)
     pub fn with_ref<R>(
         &self,
@@ -132,15 +58,13 @@ impl ModuleContainer {
     pub fn is<T: 'static>(&self) -> bool {
         TypeId::of::<T>() == self.type_id
     }
-}
 
-impl ModuleContainer {
-    /// See [`crate::DearMirlGuiModule`] for documentation
+    /// See [crate::DearMirlGuiModule] for documentation
     pub fn apply_new_formatting(&mut self, formatting: &crate::Formatting) {
         self.with_ref_mut(|item| item.apply_new_formatting(formatting));
     }
+    /// See [crate::DearMirlGuiModule] for documentation
     #[must_use]
-    /// See [`crate::DearMirlGuiModule`] for documentation
     pub fn draw(
         &self,
         formatting: &crate::Formatting,
@@ -148,43 +72,49 @@ impl ModuleContainer {
     ) -> (Buffer, InsertionMode) {
         self.with_ref_mut(|item| item.draw(formatting, info))
     }
-
+    /// See [crate::DearMirlGuiModule] for documentation
     #[must_use]
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub fn get_height(&self, formatting: &crate::Formatting) -> isize {
-        self.with_ref(|item| item.get_height(formatting))
+    pub fn get_height(
+        &self,
+        formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.with_ref_mut(|item| item.get_height(formatting))
     }
-
+    /// See [crate::DearMirlGuiModule] for documentation
     #[must_use]
-    /// See [`crate::DearMirlGuiModule`] for documentation
-    pub fn get_width(&self, formatting: &crate::Formatting) -> isize {
-        self.with_ref(|item| item.get_width(formatting))
+    pub fn get_width(
+        &self,
+        formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.with_ref_mut(|item| item.get_width(formatting))
     }
-    /// See [`crate::DearMirlGuiModule`] for documentation
+    /// See [crate::DearMirlGuiModule] for documentation
     #[must_use]
     pub fn update(&self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
-        let mut borrowed = self.item.borrow_mut();
-        (self.vtable.update)(&mut **borrowed, info)
+        self.with_ref_mut(|item| item.update(info))
     }
-    /// See [`crate::DearMirlGuiModule`] for documentation
+    /// See [crate::DearMirlGuiModule] for documentation
     pub fn modify_offset_cursor(
         &self,
         modules: &[Self],
         used_idx: &Vec<usize>,
         formatting: &crate::Formatting,
-        current: (&mut isize, &mut isize),
+        current: (
+            &mut crate::DearMirlGuiCoordinateType,
+            &mut crate::DearMirlGuiCoordinateType,
+        ),
     ) {
-        self.with_ref(|item| {
+        self.with_ref_mut(|item| {
             item.modify_offset_cursor(modules, used_idx, formatting, current);
         });
     }
-    /// See [`crate::DearMirlGuiModule`] for documentation
+    /// See [crate::DearMirlGuiModule] for documentation
     #[must_use]
     pub fn need_redraw(&self) -> bool {
-        self.with_ref(|item| item.need_redraw())
+        self.with_ref_mut(|item| item.need_redraw())
     }
-    /// See [`crate::DearMirlGuiModule`] for documentation
+    /// See [crate::DearMirlGuiModule] for documentation
     pub fn set_need_redraw(&self, redraw: Vec<(usize, bool)>) {
-        self.with_ref(|item| item.set_need_redraw(redraw));
+        self.with_ref_mut(|item| item.set_need_redraw(redraw));
     }
 }

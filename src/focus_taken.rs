@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// How much focus has been took
 pub enum FocusTaken {

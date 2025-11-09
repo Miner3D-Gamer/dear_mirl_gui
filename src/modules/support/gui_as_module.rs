@@ -1,6 +1,6 @@
-use mirl::extensions::*;
+use mirl::{extensions::*, misc::NormalDirections};
 
-use crate::{gui::Directions, Buffer, DearMirlGui, DearMirlGuiModule, InsertionMode};
+use crate::{Buffer, DearMirlGui, DearMirlGuiModule, InsertionMode};
 
 // #[derive(Debug, Clone)]
 // /// A wrapper between an internal gui accessed with the .gui field and the module system of another window
@@ -37,29 +37,28 @@ unsafe impl<const FAST: bool, const USE_CACHE: bool> std::marker::Send
 impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
     for DearMirlGui<FAST, USE_CACHE>
 {
-    fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {
-        self.allow_dragging = false;
-
-        let mut directions = Directions::all_false();
-        directions.bottom = true;
-        directions.right = true;
-        directions.bottom_right = true;
-        self.resizing_allowed_in_directions = directions;
+    fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
+        self.needs_redraw
+            .set(crate::modules::misc::determine_need_redraw(need_redraw));
     }
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
-        self.needs_redraw.set(crate::modules::misc::determine_need_redraw(need_redraw));
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        Self::get_height(self) as crate::DearMirlGuiCoordinateType
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.get_height() as isize
-    }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.get_width() as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        Self::get_width(self) as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         let window_offset = { (self.x, self.y) };
         //println!("{:?}, {:?}", window_offset, self.gui.borrow().last_mouse_pos);
         self.update(
-            info.mouse_pos.map(|pos| pos.add(window_offset.tuple_2_into())),
+            info.mouse_pos.map(|pos| pos.add(window_offset.tuple_into())),
             info.mouse_scroll,
             info.mouse_info.left.down,
             info.mouse_info.middle.down,
@@ -69,7 +68,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
             info.clipboard_data,
         )
     }
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         true
     }
     fn draw(
@@ -78,5 +77,14 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
         (self.render(), InsertionMode::ReplaceAll)
+    }
+    fn added(&mut self, _container_id: usize) {
+        self.allow_dragging = false;
+
+        let mut directions = NormalDirections::all_false();
+        directions.bottom = true;
+        directions.right = true;
+        directions.bottom_right = true;
+        self.resizing_allowed_in_directions = directions;
     }
 }

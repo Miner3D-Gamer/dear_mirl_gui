@@ -13,16 +13,16 @@ pub fn adjust_progress_by_mouse<T: mirl::math::NumberWithMonotoneOps + Copy>(
 /// A simple function to draw a diagonal cross
 #[must_use]
 pub fn draw_cross(size: usize, thickness: isize) -> Buffer {
-    let buffer = Buffer::new_empty(size, size);
+    let mut buffer = Buffer::new_empty((size, size));
     render::draw_line::<true>(
-        &buffer,
+        &mut buffer,
         (0, 0),
         (size, size),
         mirl::graphics::color_presets::WHITE,
         thickness,
     );
     render::draw_line::<true>(
-        &buffer,
+        &mut buffer,
         (0, size),
         (size, 0),
         mirl::graphics::color_presets::WHITE,
@@ -34,7 +34,7 @@ pub fn draw_cross(size: usize, thickness: isize) -> Buffer {
 /// A simple function to draw a solid block
 #[must_use]
 pub fn draw_blocking(size: usize, color: u32) -> Buffer {
-    Buffer::new_empty_with_color(size, size, color)
+    Buffer::new_empty_with_color((size, size), color)
 }
 
 /// Get the closest position between 2 characters to the target X

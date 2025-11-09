@@ -1,10 +1,10 @@
 use mirl::{
     //extensions::*,
-    graphics::rgba_u32_to_u32,
+    graphics::rgba_to_u32,
     math::interpolate,
 };
 
-use crate::{render, Buffer, DearMirlGuiModule, InsertionMode};
+use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
 
 #[derive(Debug, Clone, PartialEq)]
 /// A Progress Bar module
@@ -46,13 +46,19 @@ impl ProgressBar {
 
 impl DearMirlGuiModule for ProgressBar {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     //#[allow(clippy::too_many_lines)] // Really? What.
@@ -71,9 +77,8 @@ impl DearMirlGuiModule for ProgressBar {
             }
         }
         let color_change = -10.0;
-        let buffer = Buffer::new_empty_with_color(
-            self.width,
-            self.height,
+        let mut buffer = Buffer::new_empty_with_color(
+            (self.width, self.height),
             formatting.foreground_color,
         );
 
@@ -100,11 +105,9 @@ impl DearMirlGuiModule for ProgressBar {
             )
         };
         render::draw_rectangle::<{ crate::DRAW_SAFE }>(
-            &buffer,
-            0,
-            y_pos,
-            width,
-            height,
+            &mut buffer,
+            (0, y_pos),
+            (width, height),
             mirl::graphics::adjust_brightness_hsl_of_rgb(
                 formatting.foreground_color,
                 color_change,
@@ -133,10 +136,10 @@ impl DearMirlGuiModule for ProgressBar {
         let coord = self.width / 2 - actual_text_width as usize / 2;
 
         render::draw_text_antialiased_execute_at::<false>(
-            &buffer,
+            &mut buffer,
             &text,
             (coord, 0),
-            rgba_u32_to_u32(255, 255, 255, 255),
+            rgba_to_u32(255, 255, 255, 255),
             self.height as f32 * scaling,
             &formatting.font,
             draw_or_invert,
@@ -152,7 +155,7 @@ impl DearMirlGuiModule for ProgressBar {
         }
         crate::GuiOutput::empty()
     }
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

@@ -87,7 +87,7 @@ impl DearMirlGuiModule for Button {
     // fn as_any_mut(&mut self) -> &mut dyn Any {
     //     self
     // }
-    fn set_need_redraw(&self, need_redraw: Vec<(usize, bool)>) {
+    fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));
     }
     fn draw(
@@ -112,8 +112,8 @@ impl DearMirlGuiModule for Button {
                 );
             }
         }
-        let buffer =
-            Buffer::new_empty_with_color(self.width, self.height, color);
+        let mut buffer =
+            Buffer::new_empty_with_color((self.width, self.height), color);
 
         let text_height = render::get_text_height(
             &self.text,
@@ -147,7 +147,7 @@ impl DearMirlGuiModule for Button {
             );
 
             render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
-                &buffer,
+                &mut buffer,
                 &self.text,
                 (pos.0 as usize, pos.1 as usize),
                 text_color,
@@ -170,7 +170,7 @@ impl DearMirlGuiModule for Button {
                 mirl::math::interpolate(x_at_end, x_at_start, progress as f32);
 
             render::draw_text_antialiased_isize::<{ crate::DRAW_SAFE }>(
-                &buffer,
+                &mut buffer,
                 &self.text,
                 (x as isize, 0),
                 text_color,
@@ -182,11 +182,17 @@ impl DearMirlGuiModule for Button {
 
         (buffer, InsertionMode::ReplaceAll)
     }
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
-        self.height as isize
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.height as crate::DearMirlGuiCoordinateType
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
-        self.width as isize
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
+        self.width as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         self.scroll += info.delta_time * self.scroll_multiplier;
@@ -202,8 +208,8 @@ impl DearMirlGuiModule for Button {
         let collision = mirl::math::collision::Rectangle::<_, false>::new(
             0,
             0,
-            self.width as isize,
-            self.height as isize,
+            self.width as i32,
+            self.height as i32,
         );
         if let Some(mouse_position) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_position);
@@ -252,7 +258,7 @@ impl DearMirlGuiModule for Button {
             crate::GuiOutput::empty()
         }
     }
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         if self.needs_redraw.get() {
             self.needs_redraw.set(false);
             true

@@ -1,4 +1,4 @@
-use mirl::{extensions::*, platform::keycodes::KeyCode, Buffer};
+use mirl::{Buffer, extensions::*, platform::keycodes::KeyCode};
 
 use crate::{
     ButtonState, DearMirlGui, FocusTaken, GuiOutput, ModuleUpdateInfo,
@@ -17,7 +17,7 @@ pub struct WindowManager<const FAST: bool, const USE_CACHE: bool> {
     /// If the right mouse button was pressed last frame
     pub last_right_mouse_down: bool,
     /// The last known mouse position
-    pub last_mouse_pos: (isize, isize),
+    pub last_mouse_pos: (i32, i32),
 }
 impl<const FAST: bool, const USE_CACHE: bool> WindowManager<FAST, USE_CACHE> {
     /// Create a new window manager
@@ -40,8 +40,8 @@ impl<const FAST: bool, const USE_CACHE: bool> WindowManager<FAST, USE_CACHE> {
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)] // Well, clippy... it's just big. :(
     pub fn update(
         &mut self,
-        mouse_pos: Option<(isize, isize)>,
-        mouse_scroll: Option<(isize, isize)>,
+        mouse_pos: Option<(i32, i32)>,
+        mouse_scroll: Option<(f32, f32)>,
         left_mouse_down: bool,
         middle_mouse_down: bool,
         right_mouse_down: bool,
@@ -115,7 +115,7 @@ impl<const FAST: bool, const USE_CACHE: bool> WindowManager<FAST, USE_CACHE> {
         }
     }
     /// Draw all windows on the buffer
-    pub fn draw_on_buffer(&mut self, buffer: &Buffer) {
+    pub fn draw_on_buffer(&mut self, buffer: &mut Buffer) {
         for i in self.windows.iter_mut().rev() {
             i.draw_on_buffer(buffer);
         }

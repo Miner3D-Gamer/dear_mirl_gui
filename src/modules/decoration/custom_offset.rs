@@ -4,7 +4,10 @@ type FunctionModifyCursor = fn(
     &[crate::gui::extra::ModuleContainer],
     &Vec<usize>,
     &crate::Formatting,
-    (&mut isize, &mut isize),
+    (
+        &mut crate::DearMirlGuiCoordinateType,
+        &mut crate::DearMirlGuiCoordinateType,
+    ),
 );
 
 #[derive(Debug, Clone, Copy)]
@@ -26,16 +29,22 @@ impl CustomOffset {
 
 impl DearMirlGuiModule for CustomOffset {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
-    fn get_height(&self, _formatting: &crate::Formatting) -> isize {
+    fn get_height(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
         0
     }
-    fn get_width(&self, _formatting: &crate::Formatting) -> isize {
+    fn get_width(
+        &mut self,
+        _formatting: &crate::Formatting,
+    ) -> crate::DearMirlGuiCoordinateType {
         0
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         crate::GuiOutput::empty()
     }
-    fn need_redraw(&self) -> bool {
+    fn need_redraw(&mut self) -> bool {
         false
     }
     fn draw(
@@ -43,14 +52,17 @@ impl DearMirlGuiModule for CustomOffset {
         _formatting: &crate::Formatting,
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
-        (Buffer::new_empty(0, 0), InsertionMode::Simple)
+        (Buffer::new_empty((0, 0)), InsertionMode::Simple)
     }
     fn modify_offset_cursor(
-        &self,
+        &mut self,
         modules: &[crate::gui::extra::ModuleContainer],
         used_idx: &Vec<usize>,
         formatting: &crate::Formatting,
-        current: (&mut isize, &mut isize),
+        current: (
+            &mut crate::DearMirlGuiCoordinateType,
+            &mut crate::DearMirlGuiCoordinateType,
+        ),
     ) {
         (self.function)(modules, used_idx, formatting, current);
     }
