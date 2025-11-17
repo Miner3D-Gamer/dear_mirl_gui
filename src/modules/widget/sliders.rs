@@ -30,10 +30,10 @@ pub struct Slider<
     pub range: std::ops::Range<LimitType>,
 }
 impl<
-    ProgressType: num_traits::Float + FromPatch<LimitType>,
+    ProgressType: num_traits::Float + TryFromPatch<LimitType>,
     LimitType: mirl::math::NumberWithMonotoneOps
         + num_traits::Bounded
-        + FromPatch<ProgressType>
+        + TryFromPatch<ProgressType>
         + Copy,
 > Slider<ProgressType, LimitType>
 {
@@ -68,7 +68,7 @@ impl<
         }
     }
     /// Based on the given range, get the value associated
-    pub fn get_value(&self) -> LimitType {
+    pub fn get_value(&self) -> Option<LimitType> {
         self.range.get_value_from_percent(self.progress)
     }
 }

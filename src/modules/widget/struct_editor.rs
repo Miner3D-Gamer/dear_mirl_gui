@@ -150,7 +150,7 @@ impl DearMirlGuiModule for StructEditor {
                     //     &mut buffer,
                     //     "test",
                     //     (0, 0),
-                    //     mirl::graphics::color_presets::RED,
+                    //     mirl::graphics::colors::RED,
                     //     20.0,
                     //     &formatting.font,
                     // );

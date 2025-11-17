@@ -58,7 +58,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
         let window_offset = { (self.x, self.y) };
         //println!("{:?}, {:?}", window_offset, self.gui.borrow().last_mouse_pos);
         self.update(
-            info.mouse_pos.map(|pos| pos.add(window_offset.tuple_into())),
+            info.mouse_pos.map(|pos| {
+                pos.add(window_offset.try_tuple_into().unwrap_or_default())
+            }),
             info.mouse_scroll,
             info.mouse_info.left.down,
             info.mouse_info.middle.down,

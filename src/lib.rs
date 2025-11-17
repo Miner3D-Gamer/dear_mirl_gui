@@ -63,7 +63,7 @@
 //!             // Gathering data
 //!             let mouse_scroll = window
 //!                 .get_mouse_scroll()
-//!                 .map(mirl::extensions::Tuple2Into::tuple_into);
+//!                 .map(mirl::extensions::Tuple2Into::try_tuple_into);
 //!             let mouse_pos = window.get_mouse_position();
 //!             let pressed_keys = window.get_all_keys_down();
 //!
@@ -322,17 +322,14 @@ fn main() {
 #[cfg(feature = "debug-window")]
 #[allow(dead_code)]
 fn actual_main() {
-    use mirl::platform::file_system::FileSystemNew;
-
     let mut buffer = mirl::platform::Buffer::new_empty((800, 600));
     let mut window = mirl::platform::minifb::Framework::new(
         "Rust Window",
-        *mirl::platform::WindowSettings::default(&buffer)
+        mirl::platform::WindowSettings::default(&buffer)
             .set_position_to_middle_of_screen(),
     )
     .unwrap();
-    let file_system =
-        mirl::platform::file_system::NativeFileSystem::new(Vec::new()).unwrap();
+    let file_system = mirl::platform::file_system::FileSystem::new().unwrap();
     main_loop(&mut window, &file_system, &mut buffer);
 }
 
@@ -343,7 +340,7 @@ pub use struct_editor_test::*;
 #[cfg(feature = "debug-window")]
 fn main_loop<
     F: mirl::platform::framework_traits::ExtendedFramework,
-    D: mirl::platform::file_system::FileSystem,
+    D: mirl::platform::file_system::file_system_traits::FileSystem,
 >(
     window: &mut F,
     file_system: &D,
@@ -354,7 +351,7 @@ fn main_loop<
     mirl::enable_traceback();
     let font = mirl::platform::file_system::get_default_font(file_system)
         .unwrap()
-        .as_font()
+        .to_font()
         .unwrap();
 
     set_formatting(Formatting::default(&font, 20));
@@ -629,7 +626,8 @@ fn main_loop<
         buffer.clear_buffer_with_color(rgb_to_u32(110, 150, 140));
         let mouse_scroll = window
             .get_mouse_scroll()
-            .map(mirl::extensions::Tuple2Into::tuple_into);
+            .map(mirl::extensions::Tuple2Into::try_tuple_into)
+            .unwrap_or_default();
 
         // Set this to true if you wanna see how the gui handles casting modules to an incorrect type
         if false {
@@ -755,6 +753,7 @@ fn main_loop<
         if let Some(mouse_pos) = mouse_pos
             && buffer
                 .create_collision::<false, i32>(0, 0)
+                .unwrap_or_default()
                 .does_area_contain_point(mouse_pos)
         {
             window.set_cursor_style(

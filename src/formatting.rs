@@ -26,7 +26,7 @@ impl Formatting {
     pub const DEFAULT_STUFF_COLOR: u32 =
         mirl::graphics::rgba_to_u32(40, 30, 100, 255);
     /// The color of the text
-    pub const DEFAULT_TEXT_COLOR: u32 = mirl::graphics::color_presets::WHITE;
+    pub const DEFAULT_TEXT_COLOR: u32 = mirl::graphics::colors::WHITE;
     /// The margin between individual modules and the edge
     pub const DEFAULT_HORIZONTAL_MARGIN: usize = 5;
     /// The margin between individual modules and the edge

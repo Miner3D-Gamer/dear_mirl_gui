@@ -6,6 +6,8 @@
 Or in simpler terms:
 A debug window crate designed and tailored to work with [Mirl](https://crates.io/crates/mirl). It can be implemented in around 20 lines of code (If you don't use fancy bracket formatting)
 
+It is by no means as good as Dear Imgui or its native rust ports but I have yet to see one of them run smoothly on the cpu.
+
 > Default modules are listed at the bottom
 
 ## Integration:

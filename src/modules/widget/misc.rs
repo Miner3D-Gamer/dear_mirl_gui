@@ -18,14 +18,14 @@ pub fn draw_cross(size: usize, thickness: isize) -> Buffer {
         &mut buffer,
         (0, 0),
         (size, size),
-        mirl::graphics::color_presets::WHITE,
+        mirl::graphics::colors::WHITE,
         thickness,
     );
     render::draw_line::<true>(
         &mut buffer,
         (0, size),
         (size, 0),
-        mirl::graphics::color_presets::WHITE,
+        mirl::graphics::colors::WHITE,
         thickness,
     );
 

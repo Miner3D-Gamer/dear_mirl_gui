@@ -27,7 +27,7 @@ pub struct NestedSettings {
 //     ) -> (mirl::Buffer, crate::InsertionMode) {
 //         (
 //             mirl::Buffer::generate_fallback(
-//                 self.get_size(formatting).tuple_into(),
+//                 self.get_size(formatting).try_tuple_into(),
 //                 2,
 //             ),
 //             crate::InsertionMode::ReplaceAll,

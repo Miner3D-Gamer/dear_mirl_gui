@@ -93,14 +93,14 @@ impl DearMirlGuiModule for Crank {
         );
         render::draw_circle::<true, false>(
             &mut buffer,
-            (x, y).tuple_into(),
+            (x, y).try_tuple_into().unwrap_or_default(),
             crank_handle_width,
             formatting.foreground_color,
         );
         render::draw_line::<true>(
             &mut buffer,
             (offset, offset),
-            (x, y).tuple_into(),
+            (x, y).try_tuple_into().unwrap_or_default(),
             formatting.foreground_color,
             crank_connector_width,
         );
@@ -162,8 +162,10 @@ impl DearMirlGuiModule for Crank {
                     1.0,
                 );
             let closest: (f32, f32) = middle
-                .get_closest_point_on_edge(mouse_pos.tuple_into())
-                .sub((offset, offset).tuple_into());
+                .get_closest_point_on_edge(
+                    mouse_pos.try_tuple_into().unwrap_or_default(),
+                )
+                .sub((offset, offset).try_tuple_into().unwrap_or_default());
             let angle = closest.1.atan2(closest.0);
             let prev_rotation = self.rotation;
             self.rotation = ((angle + f32::consts::PI / 2.0)

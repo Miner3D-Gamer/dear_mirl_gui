@@ -20,8 +20,18 @@ pub struct ButtonState {
 #[allow(missing_docs)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// The current state of the mouse buttons and if they have just been pressed
-pub struct MouseData {
+pub struct MouseState {
     pub left: ButtonState,
     pub middle: ButtonState,
     pub right: ButtonState,
 }
+
+// pub struct MousePos<T> {
+//     pos: (T, T),
+//     delta_pos: (T, T),
+// }
+
+// pub struct MouseData<T> {
+//     buttons: MouseState,
+//     pos: MousePos<T>,
+// }

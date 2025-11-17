@@ -2,7 +2,7 @@ use mirl::{Buffer, extensions::*, platform::keycodes::KeyCode};
 
 use crate::{
     ButtonState, DearMirlGui, FocusTaken, GuiOutput, ModuleUpdateInfo,
-    MouseData,
+    MouseState,
 };
 
 #[derive(Debug, Clone)]
@@ -50,7 +50,7 @@ impl<const FAST: bool, const USE_CACHE: bool> WindowManager<FAST, USE_CACHE> {
         clipboard_data: &Option<mirl::platform::file_system::FileData>,
     ) -> GuiOutput {
         let mut output = GuiOutput::empty();
-        let mouse_data = MouseData {
+        let mouse_data = MouseState {
             left: ButtonState::new(left_mouse_down, self.last_left_mouse_down),
             middle: ButtonState::new(
                 middle_mouse_down,

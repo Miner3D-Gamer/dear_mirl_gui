@@ -373,7 +373,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
     /// Automatically draw the window onto a `mirl::platform::Buffer`
     ///
     /// If nothing is showing up, maybe check the size if the gui
-    pub fn draw_on_buffer(&mut self, buffer: &mut Buffer) {
+    pub fn draw_on_buffer(&mut self, buffer: &mut Buffer) -> Option<()> {
         #[cfg(feature = "draw_debug")]
         println!("Before Drawing");
         let to_draw = self.render();
@@ -383,23 +383,24 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             self.x, self.y, to_draw.width, to_draw.height
         );
         if buffer
-            .create_collision::<false, crate::DearMirlGuiCoordinateType>(0, 0)
+            .create_collision::<false, crate::DearMirlGuiCoordinateType>(0, 0)?
             .does_area_fully_include_other_area(
-                &to_draw.create_collision::<false, _>(self.x, self.y),
+                &to_draw.create_collision::<false, _>(self.x, self.y)?,
             )
         {
             render::draw_buffer_on_buffer_1_to_1::<false, false, false, false>(
                 buffer,
                 &to_draw,
-                (self.x, self.y).tuple_into(),
+                (self.x, self.y).try_tuple_into()?,
             );
         } else {
             render::draw_buffer_on_buffer_1_to_1::<true, false, false, false>(
                 buffer,
                 &to_draw,
-                (self.x, self.y).tuple_into(),
+                (self.x, self.y).try_tuple_into()?,
             );
         }
+        Some(())
     }
     fn draw_menu(
         &self,
@@ -503,7 +504,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         let collision: mirl::math::collision::Rectangle<
             crate::DearMirlGuiCoordinateType,
             false,
-        > = buffer.create_collision::<false, _>(0, 0);
+        > = buffer.create_collision::<false, _>(0, 0).unwrap_or_default();
         #[cfg(feature = "draw_debug")]
         println!("Starting on drawing modules");
 
@@ -592,7 +593,10 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     + static_vertical_offset
                         as crate::DearMirlGuiCoordinateType;
 
-                let col = buf.0.create_collision::<false, _>(x, y);
+                let col = buf
+                    .0
+                    .create_collision::<false, _>(x, y)
+                    .unwrap_or_default();
                 let position = (x, y);
 
                 if collision.does_area_fully_include_other_area(&col) {
@@ -603,7 +607,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                             false,
                             false,
                         >(
-                            &mut buffer, &buf.0, position.tuple_into()
+                            &mut buffer,
+                            &buf.0,
+                            position.try_tuple_into().unwrap_or_default(),
                         );
                     } else {
                         render::draw_buffer_on_buffer_1_to_1::<
@@ -612,7 +618,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                             true,
                             false,
                         >(
-                            &mut buffer, &buf.0, position.tuple_into()
+                            &mut buffer,
+                            &buf.0,
+                            position.try_tuple_into().unwrap_or_default(),
                         );
                     }
                 } else if FAST {
@@ -622,7 +630,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                         false,
                         false,
                     >(
-                        &mut buffer, &buf.0, position.tuple_into()
+                        &mut buffer,
+                        &buf.0,
+                        position.try_tuple_into().unwrap_or_default(),
                     );
                 } else {
                     render::draw_buffer_on_buffer_1_to_1::<
@@ -631,7 +641,9 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                         true,
                         false,
                     >(
-                        &mut buffer, &buf.0, position.tuple_into()
+                        &mut buffer,
+                        &buf.0,
+                        position.try_tuple_into().unwrap_or_default(),
                     );
                 }
                 if horizontal_context {
@@ -675,11 +687,11 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         buffer
     }
     #[must_use]
-    const fn handle_dragging(
+    fn handle_dragging(
         &mut self,
         mouse_pos: Option<(i32, i32)>,
         mouse_pos_delta: (i32, i32),
-        mouse_info: &MouseData,
+        mouse_info: &MouseState,
         over_collapse_button: bool,
     ) -> (Option<CursorStyle>, FocusTaken) {
         let mut cursor_style = None;
@@ -721,7 +733,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         }
         // If no mouse position is set, invalidate it
         if let Some(current_mouse_pos) = mouse_pos {
-            self.last_mouse_pos = current_mouse_pos.const_tuple_into();
+            self.last_mouse_pos =
+                current_mouse_pos.try_tuple_into().unwrap_or_default();
         } else {
             self.last_mouse_pos = (i32::MIN, i32::MIN);
         }
@@ -735,11 +748,11 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         )
     }
     #[must_use]
-    const fn handle_resizing(
+    fn handle_resizing(
         &mut self,
         mouse_pos: Option<(i32, i32)>,
         mouse_pos_delta: (i32, i32),
-        mouse_info: &MouseData,
+        mouse_info: &MouseState,
         over_collapse_button: bool,
     ) -> (Option<CursorStyle>, FocusTaken) {
         let mut cursor_style = None;
@@ -793,7 +806,10 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                             corner_type_and_delta_to_metric_change::<
                                 crate::DearMirlGuiCoordinateType,
                             >(
-                                at_corner, mouse_pos_delta.const_tuple_into()
+                                at_corner,
+                                mouse_pos_delta
+                                    .const_try_tuple_into()
+                                    .unwrap_or_default(),
                             );
                         let width = self.width
                             as crate::DearMirlGuiCoordinateType
@@ -858,7 +874,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         delta_time: f64,
         clipboard_data: &Option<mirl::platform::file_system::FileData>,
     ) -> GuiOutput {
-        let mouse_data = MouseData {
+        let mouse_data = MouseState {
             left: ButtonState::new(left_mouse_down, self.last_left_mouse_down),
             middle: ButtonState::new(
                 middle_mouse_down,
@@ -1031,7 +1047,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
         //     current_pos = current_pos
         //         .add(next_offset)
         //         .add((width, 0))
-        //         .add((formatting.horizontal_margin, 0).tuple_into());
+        //         .add((formatting.horizontal_margin, 0).try_tuple_into());
         // }
 
         // (min_width , min_height+ formatting.vertical_margin as isize * 2)
@@ -1071,28 +1087,33 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
             //println!(">>>{:?}", gui_in_focus);
             let mut over_collapse_button = false;
 
-            let collapse_button_collision =
-                if let Some(current_mouse_pos) = module_input.mouse_pos {
-                    if self.collapse_button_collision_is_circle {
-                        let t = self.menu_height as i32 / 2;
-                        mirl::math::collision::Circle::<_, false>::new(
-                            self.x as i32 + t,
-                            self.y as i32 + t,
-                            t,
-                        )
-                        .does_area_contain_point(current_mouse_pos.tuple_into())
-                    } else {
-                        mirl::math::collision::Rectangle::<_, false>::new(
-                            self.x as i32,
-                            self.y as i32,
-                            self.menu_height as i32,
-                            self.menu_height as i32,
-                        )
-                        .does_area_contain_point(current_mouse_pos.tuple_into())
-                    }
+            let collapse_button_collision = if let Some(current_mouse_pos) =
+                module_input.mouse_pos
+            {
+                if self.collapse_button_collision_is_circle {
+                    let t = self.menu_height as i32 / 2;
+                    mirl::math::collision::Circle::<_, false>::new(
+                        self.x as i32 + t,
+                        self.y as i32 + t,
+                        t,
+                    )
+                    .does_area_contain_point(
+                        current_mouse_pos.try_tuple_into().unwrap_or_default(),
+                    )
                 } else {
-                    false
-                };
+                    mirl::math::collision::Rectangle::<_, false>::new(
+                        self.x as i32,
+                        self.y as i32,
+                        self.menu_height as i32,
+                        self.menu_height as i32,
+                    )
+                    .does_area_contain_point(
+                        current_mouse_pos.try_tuple_into().unwrap_or_default(),
+                    )
+                }
+            } else {
+                false
+            };
 
             if self.collapsed {
                 gui_in_focus = FocusTaken::FunctionallyTaken;
@@ -1173,7 +1194,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
 
         let cursor_offset = (0, 0)
             .sub((formatting.horizontal_margin as i32, 0))
-            .sub((self.x, self.y).tuple_into())
+            .sub((self.x, self.y).try_tuple_into().unwrap_or_default())
             .sub((0, self.menu_height as i32));
 
         let static_vertical_offset =
@@ -1198,7 +1219,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                         .add(cursor_offset)
                         .sub(
                             (extra_horizontal_offset, extra_vertical_offset)
-                                .tuple_into(),
+                                .try_tuple_into()
+                                .unwrap_or_default(),
                         )
                         .sub((static_horizontal_offset, static_vertical_offset))
                 });
@@ -1287,7 +1309,10 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                         gui_in_focus = FocusTaken::VisuallyTaken;
                     }
                 } else {
-                    let size = self.get_size_to_see_all_modules().tuple_into();
+                    let size = self
+                        .get_size_to_see_all_modules()
+                        .try_tuple_into()
+                        .unwrap_or_default();
 
                     self.camera.container_width = Self::get_width(self) as f32;
                     self.camera.container_height =
@@ -1321,7 +1346,7 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGui<FAST, USE_CACHE> {
                     // // );
 
                     // let size: (f32, f32) =
-                    //     self.get_size_to_see_all_modules().tuple_into();
+                    //     self.get_size_to_see_all_modules().try_tuple_into();
 
                     // let y_range: [f32; 2] = if self.allow_free_scroll {
                     //     [

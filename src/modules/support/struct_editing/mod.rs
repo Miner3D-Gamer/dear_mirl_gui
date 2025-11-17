@@ -42,7 +42,7 @@ pub trait Inspectable:
     //     formatting: &Formatting,
     //     info: &ModuleDrawInfo,
     // ) -> Buffer {
-    //     Buffer::generate_fallback(self.get_size(formatting).tuple_into(), 2)
+    //     Buffer::generate_fallback(self.get_size(formatting).try_tuple_into(), 2)
     // }
     // /// Get the size of the current thing
     // fn get_size(&mut self, _formatting: &Formatting) -> (isize, isize) {
@@ -102,7 +102,7 @@ pub fn draw_inspectable(
     let fields = thing.get_fields_mut();
 
     let mut buffer = Buffer::new_empty_with_color(
-        size.tuple_into(),
+        size.try_tuple_into().unwrap_or_default(),
         mirl::graphics::adjust_brightness_hsl_of_rgb(
             formatting.background_color,
             (5 * (1 + depth)) as f32,
@@ -210,7 +210,8 @@ pub fn get_size_of_inspectable(
         // Leaf node - use custom size
         let (w, h) =
             (thing.get_width(formatting), thing.get_height(formatting))
-                .tuple_into();
+                .try_tuple_into()
+                .unwrap_or_default();
         max_width = max_width.max(w);
         total_height += formatting.vertical_margin as isize + h;
     } else {
@@ -253,7 +254,7 @@ pub fn update_inspectable(
     let fields = thing.get_fields_mut();
 
     let mut buffer = Buffer::new_empty_with_color(
-        size.tuple_into(),
+        size.try_tuple_into().unwrap_or_default(),
         mirl::graphics::adjust_brightness_hsl_of_rgb(
             formatting.background_color,
             (5 * (1 + depth)) as f32,
@@ -293,7 +294,8 @@ pub fn update_inspectable(
         // It's a leaf node (primitive), draw it
         offset = offset.add((0, formatting.vertical_margin as isize));
         if let Some(pos) = module_update_info.mouse_pos {
-            module_update_info.mouse_pos = Some(pos.sub(offset.tuple_into()));
+            module_update_info.mouse_pos =
+                Some(pos.sub(offset.try_tuple_into().unwrap_or_default()));
         }
 
         output |= thing.update(&module_update_info);

@@ -45,7 +45,7 @@ impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
         formatting: &crate::Formatting,
         _info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
-        let text_color = mirl::graphics::color_presets::WHITE;
+        let text_color = mirl::graphics::colors::WHITE;
         let mut buffer = Buffer::new_empty_with_color(
             (
                 self.get_width(formatting) as usize,

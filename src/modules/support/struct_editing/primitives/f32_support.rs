@@ -15,7 +15,7 @@ impl InspectableType for f32 {
             state: crate::modules::Slider::new(
                 get_formatting().height,
                 None,
-                Some(range.get_percent_from_value(value)),
+                range.get_percent_from_value(value),
                 None,
                 false,
                 Some(range),

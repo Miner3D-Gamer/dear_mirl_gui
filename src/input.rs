@@ -1,6 +1,6 @@
 use mirl::platform::keycodes::KeyCode;
 
-use crate::{FocusTaken, MouseData};
+use crate::{FocusTaken, MouseState};
 
 #[derive(Debug, Clone, Copy)]
 /// A struct holding all information the modules are provided with
@@ -16,7 +16,7 @@ pub struct ModuleUpdateInfo<'a> {
     /// The mouse scroll distance, (x, y)
     pub mouse_scroll: Option<(f32, f32)>,
     /// Info on what mouse buttons have been pressed
-    pub mouse_info: &'a MouseData,
+    pub mouse_info: &'a MouseState,
     /// All pressed keys
     pub pressed_keys: &'a Vec<KeyCode>,
     /// Delta time, what else to say about it?

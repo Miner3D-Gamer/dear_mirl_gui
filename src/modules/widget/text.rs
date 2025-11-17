@@ -24,7 +24,7 @@ impl Text {
         Self {
             text: text.to_string(),
             //height: height as f32,
-            //color: color.unwrap_or(mirl::graphics::color_presets::WHITE),
+            //color: color.unwrap_or(mirl::graphics::colors::WHITE),
             needs_redraw: std::cell::Cell::new(true),
         }
     }

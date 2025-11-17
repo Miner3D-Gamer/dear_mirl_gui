@@ -72,7 +72,7 @@ impl DearMirlGuiModule for Lever {
             formatting.foreground_color,
             0.5,
         );
-        let hole_color = mirl::graphics::color_presets::BLACK;
+        let hole_color = mirl::graphics::colors::BLACK;
         let stick_color = rgba_to_u32(100, 60, 30, 255);
 
         let base_width = ((self.width as f32) * self.base_size) as usize;

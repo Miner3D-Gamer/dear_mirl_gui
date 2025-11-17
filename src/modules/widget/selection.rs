@@ -37,7 +37,7 @@ impl Selection {
         Self {
             text: text.to_vec(),
             height,
-            color: mirl::graphics::color_presets::WHITE,
+            color: mirl::graphics::colors::WHITE,
             needs_redraw: std::cell::Cell::new(true),
             currently_selected: initial_states
                 .unwrap_or_else(|| false.repeat_value(text.len())),
@@ -92,7 +92,7 @@ impl DearMirlGuiModule for Selection {
     ) -> (Buffer, InsertionMode) {
         // Button alignment
         let margin_divider = 5;
-        let inner_button_color = mirl::graphics::color_presets::WHITE;
+        let inner_button_color = mirl::graphics::colors::WHITE;
 
         let mut buffer = Buffer::new_empty((self.width, self.total_height));
         let mut offset = 0;

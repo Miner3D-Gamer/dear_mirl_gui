@@ -82,7 +82,7 @@ impl CheckBox {
                 super::misc::draw_cross(anti_margin, 2),
                 super::misc::draw_blocking(
                     anti_margin,
-                    mirl::graphics::color_presets::WHITE,
+                    mirl::graphics::colors::WHITE,
                 ),
             ]),
             margin: height / 10,
@@ -139,7 +139,7 @@ impl DearMirlGuiModule for CheckBox {
             &mut buffer,
             &self.text,
             (self.height + self.margin, 0),
-            mirl::graphics::color_presets::WHITE,
+            mirl::graphics::colors::WHITE,
             self.height as f32,
             &formatting.font,
         );
@@ -152,13 +152,19 @@ impl DearMirlGuiModule for CheckBox {
             render::draw_buffer_on_buffer_1_to_1::<true, true, false, true>(
                 &mut buffer,
                 &Buffer::generate_fallback((anti_margin, anti_margin), 2),
-                (margin, margin).div((2, 2)).tuple_into(),
+                (margin, margin)
+                    .div((2, 2))
+                    .try_tuple_into()
+                    .unwrap_or_default(),
             );
         } else {
             render::draw_buffer_on_buffer_1_to_1::<true, true, false, true>(
                 &mut buffer,
                 to_draw,
-                (margin, margin).div((2, 2)).tuple_into(),
+                (margin, margin)
+                    .div((2, 2))
+                    .try_tuple_into()
+                    .unwrap_or_default(),
             );
         }
 

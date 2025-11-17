@@ -1793,8 +1793,7 @@ impl TextInput {
     /// Writes out the keycodes at the caret position
     pub fn write(&mut self, keycodes: &[KeyCode], uppercase: bool, idx: usize) {
         for keycode in keycodes {
-            if self.blacklist.contains(keycode) != self.blacklist_is_whitelist
-            {
+            if self.blacklist.contains(keycode) != self.blacklist_is_whitelist {
                 continue;
             }
             if let Some(value) = keycode.to_user_friendly_string() {
@@ -2116,11 +2115,11 @@ impl TextInput {
         let return_value = self.handle_keybinds(&new_actions);
 
         if let Some(clipboard_data) = info.clipboard_data {
-            if let Ok(text_data) = clipboard_data.as_string() {
+            if let Ok(text_data) = clipboard_data.to_string() {
                 changed = true;
                 self.write(&text_data.to_keycodes(), shift_down, 0);
             } else if let Some(list_string) =
-                clipboard_data.as_list_of_strings()
+                clipboard_data.to_list_of_strings()
             {
                 changed = true;
                 for i in list_string {
@@ -2181,7 +2180,9 @@ impl DearMirlGuiModule for TextInput {
             render::draw_text_antialiased_isize::<{ crate::DRAW_SAFE }>(
                 &mut buffer,
                 text,
-                (self.get_horizontal_text_offset(formatting), y).tuple_into(),
+                (self.get_horizontal_text_offset(formatting), y)
+                    .try_tuple_into()
+                    .unwrap_or_default(),
                 text_color,
                 self.line_height as f32 * text_size_mul,
                 &formatting.font,

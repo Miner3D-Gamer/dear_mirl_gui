@@ -1,4 +1,4 @@
-use mirl::extensions::FromPatch;
+use mirl::extensions::TryFromPatch;
 
 use crate::DearMirlGuiModule;
 
@@ -13,7 +13,7 @@ impl<
     const CS: bool,
 > DearMirlGuiModule for mirl::math::collision::Circle<T, CS>
 where
-    crate::DearMirlGuiCoordinateType: mirl::extensions::FromPatch<T>,
+    crate::DearMirlGuiCoordinateType: mirl::extensions::TryFromPatch<T>,
 {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
     fn draw(
@@ -28,7 +28,7 @@ where
             &mut buffer,
             (circle_size, circle_size),
             circle_size,
-            mirl::graphics::color_presets::RED,
+            mirl::graphics::colors::RED,
         );
         (buffer, crate::InsertionMode::ReplaceAll)
     }
@@ -36,13 +36,15 @@ where
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        crate::DearMirlGuiCoordinateType::from_value(self.radius * T::TWO)
+        crate::DearMirlGuiCoordinateType::try_from_value(self.radius * T::TWO)
+            .unwrap_or_default()
     }
     fn get_width(
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        crate::DearMirlGuiCoordinateType::from_value(self.radius * T::TWO)
+        crate::DearMirlGuiCoordinateType::try_from_value(self.radius * T::TWO)
+            .unwrap_or_default()
     }
     fn need_redraw(&mut self) -> bool {
         true
