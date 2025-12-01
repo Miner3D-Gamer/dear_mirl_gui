@@ -15,7 +15,7 @@ keywords = ["gui", "rmgui", "mirl", "debugging", "widgets"]
 mirl = { version = ">=7.1.0", default-features = false, features = [
     "font_support",
     #"svg",
-    # "keycodes",
+    "keycodes",
     "random",
     "std",
     "num_traits",
