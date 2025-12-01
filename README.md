@@ -1,6 +1,5 @@
 # [Dear Mirl Gui](https://github.com/Miner3D-Gamer/dear-mirl-gui)
 
-
 **A registry-based, retained-mode, modular GUI library for [Mirl](https://crates.io/crates/mirl), inspired by [`Dear ImGui`](https://github.com/ocornut/imgui).**
 
 Or in simpler terms:
@@ -45,7 +44,7 @@ How to use:
             // Gathering data
             let mouse_scroll = window
                 .get_mouse_scroll()
-                .map(mirl::extensions::Tuple2Into::tuple_into);
+                .map(mirl::extensions::Tuple2Into::try_tuple_into).unwrap_or_default();
             let mouse_pos = window.get_mouse_position();
             let pressed_keys = window.get_all_keys_down();
 
@@ -118,24 +117,26 @@ The goal of the lib is to be both as extendable as possible (using a single trai
 ## Default Modules (Alphabetically sorted):
 
 ### Widgets (15-3):
-- Button            => Hover and click
-- Checkbox          => Click to cycle through any amount of states
-- Color Picker      => Unimplemented!
-- Crank             => Get rotational data
-- Image button      => A button that instead of showing text, displays an image
-- Image             => A static image
-- Lever             => Up or Down, boolean input
-- List select       => Unimplemented!
-- Number display    => Text module for numbers
-- Progress bar      => From 0% to 100% (Can be vertical)
-- Selection         => Radio Buttons with the option of selecting multiple options
-- Slider            => Slider from 0 to 1 supporting custom ranges
-- Struct Editor     => Unimplemented!
-- Text Input        => Virtual text box (Supports custom keybinds)
-- Text              => Display text
+
+- Button => Hover and click
+- Checkbox => Click to cycle through any amount of states
+- Color Picker => Unimplemented!
+- Crank => Get rotational data
+- Image button => A button that instead of showing text, displays an image
+- Image => A static image
+- Lever => Up or Down, boolean input
+- List select => Unimplemented!
+- Number display => Text module for numbers
+- Progress bar => From 0% to 100% (Can be vertical)
+- Selection => Radio Buttons with the option of selecting multiple options
+- Slider => Slider from 0 to 1 supporting custom ranges
+- Struct Editor => Unimplemented!
+- Text Input => Virtual text box (Supports custom keybinds)
+- Text => Display text
 
 ### Decoration (4):
-- Custom Offset     => Set custom offset between modules
-- Line              => A simple divider
-- Reset Offset      => Returns further modules back to the front of the container
-- Same line         => Puts the next module on the same height as the previous ones
+
+- Custom Offset => Set custom offset between modules
+- Line => A simple divider
+- Reset Offset => Returns further modules back to the front of the container
+- Same line => Puts the next module on the same height as the previous ones

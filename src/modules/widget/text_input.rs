@@ -9,8 +9,8 @@ use mirl::{
 };
 
 use crate::{
-    Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, ModuleUpdateInfo,
-    get_formatting, render,
+    Buffer, DRAW_SAFE, DearMirlGuiModule, FocusTaken, InsertionMode,
+    ModuleUpdateInfo, get_formatting, render,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -534,8 +534,6 @@ pub struct TextInput {
     pub last_keys_pressed: Vec<KeyCode>,
     /// The vertical, and horizontal position of the cursors. Yes for some reason this has multi cursor support
     pub caret: Vec<Caret>,
-    // /// What text has been selected, the first item is the head, the last the tail
-    // pub highlighted: (Position, Position),
     /// When at the front of a string, should pressing backspace allow you to delete what is behind? The objective answer is no, the subjective answer is 'Let it be configurable'.
     pub remove_behind: bool,
     /// Last text states allowing for ctrl+z/ctrl+y
@@ -554,7 +552,7 @@ pub struct TextInput {
     pub keybinds: Vec<KeyBind<Actions>>,
     /// Lets the caret wrap around from the start to the end/end to the start
     pub allow_caret_wrap: bool,
-    /// How much space is reserved for the line number
+    /// How much space is reserved for the line number - Do not edit
     pub line_number_offset: usize,
     /// The camera
     pub camera: mirl::misc::ScrollableCamera,
@@ -2340,7 +2338,7 @@ impl DearMirlGuiModule for TextInput {
                 ),
                 (caret_width as isize, self.line_height as isize),
                 caret_color,
-                mirl::misc::invert_color_if_same,
+                mirl::platform::Buffer::invert_color_if_same::<{ DRAW_SAFE }>,
             );
         }
         if self.text.len() == 1 && self.text[0].chars().count() == 0 {
@@ -2568,5 +2566,54 @@ impl DearMirlGuiModule for TextInput {
     }
     fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw = super::misc::determine_need_redraw(need_redraw);
+    }
+}
+
+/// Builder functions
+impl TextInput {
+    /// Set the maximum amount of lines allowed
+    #[must_use]
+    pub const fn max_lines(mut self, max_lines: usize) -> Self {
+        self.max_lines = max_lines;
+        self
+    }
+    /// When at the front of a string, should pressing backspace allow you to delete what is behind?
+    #[must_use]
+    pub const fn delete_behind(mut self, delete_behind: bool) -> Self {
+        self.remove_behind = delete_behind;
+        self
+    }
+    /// Set the text displayed when no text has been inputted
+    #[must_use]
+    pub fn placeholder_text(mut self, placeholder_text: String) -> Self {
+        self.placeholder_text = placeholder_text;
+        self
+    }
+    /// When at the start/end of the file, should the carrot be able to wrap to the other side?
+    #[must_use]
+    pub const fn allow_caret_wrap(mut self, allow_caret_wrap: bool) -> Self {
+        self.allow_caret_wrap = allow_caret_wrap;
+        self
+    }
+    /// If or not the line number should be displayed
+    #[must_use]
+    pub const fn show_line_numbers(mut self, show_line_numbers: bool) -> Self {
+        self.show_line_numbers = show_line_numbers;
+        self
+    }
+    /// Set the characters in the current black/white list
+    #[must_use]
+    pub fn blacklist(mut self, blacklist: Vec<KeyCode>) -> Self {
+        self.blacklist = blacklist;
+        self
+    }
+    /// If the blacklist should be treated as a whitelist
+    #[must_use]
+    pub const fn blacklist_is_whitelist(
+        mut self,
+        blacklist_is_whitelist: bool,
+    ) -> Self {
+        self.blacklist_is_whitelist = blacklist_is_whitelist;
+        self
     }
 }

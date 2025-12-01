@@ -3,6 +3,18 @@ use mirl::{extensions::*, graphics::rgba_to_u32};
 use crate::{
     Buffer, CursorStyle, DearMirlGuiModule, FocusTaken, InsertionMode, render,
 };
+// TODO: ADD ME
+// /// The type of progress
+// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+// pub enum Progess<
+//     ProgressType: num_traits::Float,
+//     LimitType: mirl::math::NumberWithMonotoneOps,
+// > {
+//     /// 0.5 from a range of 0..100 would be 50
+//     Percentual(ProgressType),
+//     /// 50 from a range of 0..100 would be 0.5
+//     Value(LimitType),
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 /// A slider/progress module
@@ -63,13 +75,19 @@ impl<
             wrap,
             eps,
             needs_redraw: (true),
-            range: range
-                .unwrap_or_else(|| LimitType::min_value()..LimitType::max_value()),
+            range: range.unwrap_or_else(|| {
+                LimitType::min_value()..LimitType::max_value()
+            }),
         }
     }
     /// Based on the given range, get the value associated
     pub fn get_value(&self) -> Option<LimitType> {
         self.range.get_value_from_percent(self.progress)
+    }
+    /// Based on the given range, get the value associated. Returns None when it fails
+    pub fn set_value(&mut self, value: LimitType) -> Option<()> {
+        self.progress = self.range.get_percent_from_value(value)?;
+        Some(())
     }
 }
 

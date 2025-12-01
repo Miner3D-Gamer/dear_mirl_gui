@@ -1,4 +1,4 @@
-use mirl::{extensions::*, misc::NormalDirections};
+use mirl::{extensions::*, directions::NormalDirections};
 
 use crate::{Buffer, DearMirlGui, DearMirlGuiModule, InsertionMode};
 

@@ -31,7 +31,7 @@ pub trait Inspectable:
     + AnyCasting
     + AnyCloning
     + crate::DearMirlGuiModule
-    + mirl::misc::Comparable
+    //+ mirl::misc::Comparable
 {
     /// Get all sub values
     fn get_fields_mut(&mut self) -> Vec<(&'static str, DynSyncInspectable)>;

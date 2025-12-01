@@ -2,19 +2,23 @@
 name = "dear_mirl_gui"
 version = "2.1.0"
 edition = "2024"
-description = "'A Dear ImGui' inspired RmGui lib for 'Mirl'"
+description = "A 'Dear ImGui' inspired RmGui lib for 'Mirl'"
 license = "MIT"
 exclude = ["./modules/concepts/*"]
+repository = "https://github.com/Miner3D-Gamer/dear_mirl_gui"
+keywords = ["gui", "rmgui", "mirl", "debugging", "widgets"]
 
 [dependencies]
 
 # reflectable_derive = { path = "../reflectable_derive" }
 
-mirl = { version = ">=6.0.0", default-features = false, features = [
+mirl = { version = ">=7.1.0", default-features = false, features = [
     "font_support",
-    "svg",
-    "keycodes",
+    #"svg",
+    # "keycodes",
     "random",
+    "std",
+    "num_traits",
 ] }
 
 fontdue = ">=0.9.3"

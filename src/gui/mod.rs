@@ -26,11 +26,12 @@ pub mod extra;
 
 pub use extra::ModuleContainer;
 use mirl::{
-    extensions::*,
-    misc::{
-        NormalDirections, corner_type_and_delta_to_metric_change,
-        corner_type_to_cursor_style, keybinds::KeyBind,
+    directions::NormalDirections,
+    directions::misc::{
+        corner_type_and_delta_to_metric_change, corner_type_to_cursor_style,
     },
+    extensions::*,
+    misc::keybinds::KeyBind,
     platform::{Buffer, CursorStyle, keycodes::KeyCode},
     render,
 };

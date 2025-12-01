@@ -110,6 +110,8 @@
 //! ### Functionally:
 //! **[0]** Text input module automatically selects a structure when clicking after the last character (first time selection)
 //! **[2]** Text input module selects itself through other windows
+//! **[4]** Text input module 'read_only' field doesn't do anything
+//! **[4]** Text input module 'overwrite_mode' field doesn't do anything
 //! **[6]** Crank module rotation is slightly offset
 //! **[7]** (Plugin makers only) Single insert mode overwrites the image data of other modules (No clue how - This _should_ be impossible), use the replace all option
 //!
@@ -607,7 +609,7 @@ fn main_loop<
 
     let cursor_style_manager = window
         .load_custom_cursors(
-            0.into(),
+            mirl::platform::mouse::CursorResolution::X32,
             rgb_to_u32(0, 255, 200),
             rgb_to_u32(0, 100, 100),
         )
@@ -775,8 +777,7 @@ fn main_loop<
         }
         let average_fps: u64 = fps_list.average().unwrap_or_default();
 
-        mirl::extensions::lists::add_item_to_max_sized_list(
-            &mut fps_list,
+        fps_list.push_or_replace_on_max_size(
             average_fps.max(1) as usize,
             fps as u64,
         );
