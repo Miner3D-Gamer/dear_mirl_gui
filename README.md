@@ -1,4 +1,4 @@
-# [Dear Mirl Gui](https://github.com/Miner3D-Gamer/dear-mirl-gui)
+# [Dear Mirl Gui](https://github.com/Miner3D-Gamer/dear_mirl_gui)
 
 **A registry-based, retained-mode, modular GUI library for [Mirl](https://crates.io/crates/mirl), inspired by [`Dear ImGui`](https://github.com/ocornut/imgui).**
 
