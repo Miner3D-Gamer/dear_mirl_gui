@@ -1,6 +1,6 @@
 # Version 3.0.0:
 
-- Updated to work with mirl 8.0.0
+- Updated to work with mirl >=8.0.1
 - Added `DearMirlGuiModule` to `dear_mirl_gui::WindowManager`
 - Renamed `dear_mirl_gui::module_manager::get_module` to `dear_mirl_gui::module_manager::get_module_raw`
 - Renamed `dear_mirl_gui::module_manager::get_module_mut` to `dear_mirl_gui::module_manager::get_module_raw_mut`
@@ -14,6 +14,7 @@
 - Changed the outputs of get_module_as(\_mut) to return `Result<T, ModuleReturnError>` instead of `ModuleReturnError` having a `AllGood` variant
 - Added traits for path inline functions: Instead of retrieving the module manually, you can use the path itself to do simple tasks
 - Renamed `Text` module to `TextDisplay`
+- Added default flag: `module_path_naming` which allows you to name module paths (8 characters max) using `.with_name`
 
 # Version 2.2.0:
 
