@@ -1,5 +1,9 @@
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
+use mirl::{math::ConvenientOps, prelude::Buffer, render};
 
+use crate::{
+    DearMirlGuiModule,
+    module_manager::{InsertionMode, get_formatting},
+};
 /// The number types allowed in `NumberDisplay`
 pub trait NumberDisplayNumberType:
     std::fmt::Debug + std::marker::Send + 'static + std::string::ToString
@@ -25,13 +29,21 @@ pub struct NumberDisplay<NumberDisplayNumberType> {
 impl<T: NumberDisplayNumberType> NumberDisplay<T> {
     #[allow(missing_docs)]
     #[must_use]
-    pub const fn new(number: T, slots: usize, height: f32) -> Self {
+    pub fn new(number: T, slots: usize) -> Self {
+        let formatting = get_formatting();
+        let height = formatting.height as f32;
         Self {
             number,
             height,
             slots,
             needs_redraw: std::cell::Cell::new(true),
         }
+    }
+    #[must_use]
+    /// Set a custom height
+    pub const fn with_height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
     }
 }
 
@@ -87,7 +99,7 @@ impl<T: NumberDisplayNumberType> DearMirlGuiModule for NumberDisplay<T> {
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        (self.height as crate::DearMirlGuiCoordinateType / 2)
+        ((self.height as crate::DearMirlGuiCoordinateType).half())
             * self.slots as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {

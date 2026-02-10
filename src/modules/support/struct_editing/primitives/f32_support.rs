@@ -1,7 +1,7 @@
-use mirl::extensions::RangeExtension;
+use mirl::{extensions::RangeExtension, misc::EasyUnwrapUnchecked};
 
 use crate::{
-    DearMirlGuiModule, get_formatting,
+    DearMirlGuiModule,
     modules::support::struct_editing::{
         DynSyncInspectable, Inspectable, InspectableType,
     },
@@ -9,18 +9,16 @@ use crate::{
 
 impl InspectableType for f32 {
     type Inspectable = InspectF32;
-    fn new_from_value(value: Self) -> Self::Inspectable {
+    fn new_from_value(value: Self) -> Option<Self::Inspectable> {
         let range = Self::MIN..Self::MAX;
-        InspectF32 {
+        Some(InspectF32 {
             state: crate::modules::Slider::new(
-                get_formatting().height,
-                None,
                 range.get_percent_from_value(value),
-                None,
                 false,
                 Some(range),
-            ),
-        }
+            )
+            .easy_unwrap_unchecked(),
+        })
     }
     // fn sync_from_value(&self, value: &mut Self::Inspectable) {
     //     value.state.progress = value.state.range.get_percent_from_value(*self);
@@ -64,7 +62,7 @@ impl DearMirlGuiModule for InspectF32 {
         &mut self,
         formatting: &crate::Formatting,
         info: &crate::ModuleDrawInfo,
-    ) -> (mirl::Buffer, crate::InsertionMode) {
+    ) -> (mirl::prelude::Buffer, crate::module_manager::InsertionMode) {
         self.state.draw(formatting, info)
     }
 

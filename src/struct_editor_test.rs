@@ -24,13 +24,13 @@ pub struct NestedSettings {
 //         &mut self,
 //         formatting: &crate::Formatting,
 //         _info: &crate::ModuleDrawInfo,
-//     ) -> (mirl::Buffer, crate::InsertionMode) {
+//     ) -> (mirl::prelude::Buffer, crate::module_manager::InsertionMode) {
 //         (
-//             mirl::Buffer::generate_fallback(
+//             mirl::prelude::Buffer::generate_fallback(
 //                 self.get_size(formatting).try_tuple_into(),
 //                 2,
 //             ),
-//             crate::InsertionMode::ReplaceAll,
+//             crate::module_manager::InsertionMode::ReplaceAll,
 //         )
 //     }
 //     fn get_height(&mut self, _formatting: &crate::Formatting) -> i32 {

@@ -1,5 +1,5 @@
 use crate::{
-    Any, Buffer, CursorStyle, KeyCode, DearMirlGuiItem, MouseData, render,
+    Any, Buffer, CursorStyle, DearMirlGuiItem, KeyCode, MouseData, render,
 };
 pub struct Selection {
     /// If this is empty and search_box is enabled, this can be used as a text box

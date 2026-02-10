@@ -2,7 +2,7 @@
 /// The current formatting for a window/its modules
 pub struct Formatting {
     /// The font in use
-    pub font: fontdue::Font,
+    pub font: mirl::dependencies::fontdue::Font,
     /// The default height/size for texts
     pub height: usize,
     /// The color of the background
@@ -34,7 +34,7 @@ impl Formatting {
     /// Create a formatting instance and fill in all empty values with defaults
     #[must_use]
     pub fn configured(
-        font: &fontdue::Font,
+        font: &mirl::dependencies::fontdue::Font,
         height: usize,
         menu_text_color: Option<u32>,
         main_color: Option<u32>,
@@ -61,7 +61,10 @@ impl Formatting {
     }
     /// Create a formatting instance and fill in all empty values with defaults
     #[must_use]
-    pub fn default(font: &fontdue::Font, height: usize) -> Self {
+    pub fn default(
+        font: &mirl::dependencies::fontdue::Font,
+        height: usize,
+    ) -> Self {
         Self {
             height,
             font: font.clone(),
@@ -75,7 +78,7 @@ impl Formatting {
     }
     #[must_use]
     /// Set the font
-    pub fn font(mut self, font: fontdue::Font) -> Self {
+    pub fn font(mut self, font: mirl::dependencies::fontdue::Font) -> Self {
         self.font = font;
         self
     }

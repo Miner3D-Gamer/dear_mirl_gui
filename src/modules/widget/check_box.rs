@@ -1,9 +1,44 @@
 use mirl::{
-    extensions::{Tuple2Into, TupleOps},
+    extensions::{TryTuple2Into, TupleOps},
     platform::CursorStyle,
+    prelude::Buffer,
+    render,
 };
 
-use crate::{Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, render};
+use crate::{
+    DearMirlGuiModule, FocusTaken, ModulePath,
+    module_manager::{InsertionMode, get_formatting},
+};
+/// Path inline support for [CheckBox]
+pub trait CheckBoxPathSupport {
+    /// Check if the check box has been clicked
+    fn is_checked(&self) -> bool;
+    /// Get how many times the check box has been clicked % how many states
+    fn get_check_state(&self) -> usize;
+    /// Set the text next to the checkbox
+    fn set_text(&self, text: String);
+}
+impl CheckBoxPathSupport for ModulePath<CheckBox> {
+    fn get_check_state(&self) -> usize {
+        crate::module_manager::get_module_as_mut::<_, _>(self, |check| {
+            check.checked
+        })
+        .unwrap_or_default()
+    }
+    fn is_checked(&self) -> bool {
+        crate::module_manager::get_module_as_mut::<_, _>(self, |check| {
+            check.is_checked()
+        })
+        .unwrap_or_default()
+    }
+    fn set_text(&self, text: String) {
+        let _ =
+            crate::module_manager::get_module_as_mut::<_, _>(self, |check| {
+                check.text = text;
+            });
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 /// A check box, what more to describe?
 pub struct CheckBox {
@@ -33,11 +68,12 @@ impl CheckBox {
     #[allow(missing_docs)]
     #[must_use]
     pub fn new(
-        height: usize,
         text: String,
         states: Option<Vec<Buffer>>,
         checked: Option<usize>,
     ) -> Self {
+        let formatting = get_formatting();
+        let height = formatting.height;
         let anti_margin = height - height / 5;
         Self {
             height,
@@ -52,6 +88,14 @@ impl CheckBox {
             margin: height / 10,
             needs_redraw: true,
         }
+    }
+    #[must_use]
+    /// Set the height of the text manually
+    pub const fn with_height(mut self, height: usize) -> Self {
+        let anti_margin = height - height / 5;
+        self.height = height;
+        self.margin = anti_margin;
+        self
     }
     #[must_use]
     /// Create a new check box with 2 possible states
@@ -91,7 +135,7 @@ impl CheckBox {
     }
     /// Checks if the box is un-ticked and inverts the result
     #[must_use]
-    pub const fn is_ticked(&self) -> bool {
+    pub const fn is_checked(&self) -> bool {
         self.checked != 0
     }
 }
@@ -149,7 +193,7 @@ impl DearMirlGuiModule for CheckBox {
 
         let to_draw = &self.states[self.checked];
         if buffer.width == anti_margin && buffer.height == anti_margin {
-            render::draw_buffer_on_buffer_1_to_1::<true, true, false, true>(
+            render::draw_buffer_on_buffer::<true, true, false, true>(
                 &mut buffer,
                 &Buffer::generate_fallback((anti_margin, anti_margin), 2),
                 (margin, margin)
@@ -158,7 +202,7 @@ impl DearMirlGuiModule for CheckBox {
                     .unwrap_or_default(),
             );
         } else {
-            render::draw_buffer_on_buffer_1_to_1::<true, true, false, true>(
+            render::draw_buffer_on_buffer::<true, true, false, true>(
                 &mut buffer,
                 to_draw,
                 (margin, margin)
@@ -174,13 +218,16 @@ impl DearMirlGuiModule for CheckBox {
         if info.focus_taken.is_focus_taken() {
             return crate::GuiOutput::empty();
         }
-        let collision: mirl::math::collision::Rectangle<_, true> =
-            mirl::math::collision::Rectangle::new(
-                0,
-                0,
-                self.height as i32,
-                self.height as i32,
-            );
+        let collision: mirl::math::geometry::Pos2D<
+            _,
+            mirl::math::collision::Rectangle<_, true>,
+        > = mirl::math::geometry::Pos2D::new(
+            (0.0, 0.0),
+            mirl::math::collision::Rectangle::new((
+                self.height as f32,
+                self.height as f32,
+            )),
+        );
         if let Some(mouse_pos) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_pos);
             if collides {

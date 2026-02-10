@@ -12,6 +12,8 @@ pub mod image_button;
 pub mod lever;
 /// Display numbers in a seven segment display style
 pub mod number_display;
+/// A number input field
+pub mod number_input;
 /// Progress bar
 pub mod progress_bar;
 /// Button Selection module including a radio button option
@@ -21,11 +23,11 @@ pub mod sliders;
 #[cfg(feature = "experimental")]
 /// A visual struct editor
 pub mod struct_editor;
-/// Text module
+/// Text display module
 pub mod text;
 /// A simple text input module
 ///
-/// This is currently in a very basic state and will be rewritten in the future
+/// This is currently in a very basic state and will be subject for improvement later
 pub mod text_input;
 
 pub use button::Button;
@@ -35,12 +37,13 @@ pub use image::Image;
 pub use image_button::ImageButton;
 pub use lever::Lever;
 pub use number_display::NumberDisplay;
+pub use number_input::NumberInput;
 pub use progress_bar::ProgressBar;
 pub use selection::Selection;
 pub use sliders::Slider;
 #[cfg(feature = "experimental")]
 pub use struct_editor::StructEditor;
-pub use text::Text;
+pub use text::TextDisplay;
 pub use text_input::TextInput;
 
 /// Misc function the modules use

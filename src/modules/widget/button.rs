@@ -1,18 +1,19 @@
-use crate::{Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, render};
+use mirl::{platform::mouse::ButtonState, prelude::Buffer, render};
+
+use crate::{
+    DearMirlGuiModule, FocusTaken, ModulePath,
+    module_manager::{InsertionMode, get_formatting},
+};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(unpredictable_function_pointer_comparisons)]
 /// A simple button
 pub struct Button {
-    /// A function that will be executed every time the button is pressed, not released
-    pub function_on_click: Option<fn()>,
-    /// A function that will be executed every time the button is released, not pressed
-    pub function_on_release: Option<fn()>,
-    /// A function that will be executed every time the button held down, neither pressed or released. The usize input is the amount of frames the button has been held for
-    pub function_on_held: Option<fn(usize)>,
+    /// A function that will be executed every time the button is interacted with
+    pub interaction_function: fn(ButtonState),
     /// is currently hovering over the button
     pub hovering: usize,
     /// If the button is actively pressed
-    pub pressed: bool,
+    pub pressed: ButtonState,
     #[allow(missing_docs)]
     pub width: usize,
     #[allow(missing_docs)]
@@ -43,29 +44,24 @@ impl Button {
     #[must_use]
     pub fn new(
         text: String,
-        height: usize,
-        width: Option<usize>,
-        font: Option<&fontdue::Font>,
-        function_on_click: Option<fn()>,
-        function_on_release: Option<fn()>,
-        function_on_held: Option<fn(usize)>,
+        // height: usize,
+        // width: Option<usize>,
+        // font: Option<&mirl::dependencies::fontdue::Font>,
+        // function_on_click: Option<fn()>,
+        // function_on_release: Option<fn()>,
+        // function_on_held: Option<fn(usize)>,
     ) -> Self {
-        let width_to_height_mul = 3;
+        let formatting = get_formatting();
+        let height = formatting.height;
+
         Self {
-            function_on_click,
-            pressed: false,
+            pressed: ButtonState::default(),
             hovering: 0,
-            width: width.unwrap_or_else(|| {
-                font.map_or_else(
-                    || height * width_to_height_mul,
-                    |font| {
-                        render::get_text_width(&text, height as f32, font)
-                            as usize
-                    },
-                )
-            }),
-            function_on_held,
-            function_on_release,
+            width: render::get_text_width(
+                &text,
+                height as f32,
+                &formatting.font,
+            ) as usize,
             height,
             text,
             needs_redraw: std::cell::Cell::new(true),
@@ -76,7 +72,32 @@ impl Button {
             threshold_before_text_scrolls:
                 Self::DEFAULT_THRESHOLD_BEFORE_TEXT_SCROLLS,
             menus: Vec::new(),
+            interaction_function: |_| {},
         }
+    }
+    #[must_use]
+    /// Set the current width, use [with_height](Self::with_height) for setting the height
+    pub const fn with_width(mut self, width: usize) -> Self {
+        self.width = width;
+        self
+    }
+    #[must_use]
+    /// Set the current width, use [with_width](Self::with_width) for setting the width
+    pub const fn with_height(mut self, height: usize) -> Self {
+        self.height = height;
+        self
+    }
+    #[must_use]
+    /// Set what function shall be called when the button is interacted with
+    pub const fn with_interaction_function(
+        mut self,
+        interaction_function: fn(ButtonState),
+    ) -> Self {
+        self.interaction_function = interaction_function;
+        self
+    }
+    fn set_text(&mut self, text: String) {
+        self.text = text;
     }
 }
 
@@ -105,7 +126,7 @@ impl DearMirlGuiModule for Button {
                 color,
                 self.color_change_on_hover,
             );
-            if self.pressed {
+            if self.pressed.down {
                 color = mirl::graphics::adjust_brightness_hsl_of_rgb(
                     color,
                     self.color_change_on_clicking,
@@ -199,17 +220,21 @@ impl DearMirlGuiModule for Button {
         self.scroll %= 1.0;
 
         if info.focus_taken.is_focus_taken() {
-            self.pressed = false;
+            self.pressed = ButtonState::default();
             if self.hovering == info.container_id {
                 self.hovering = 0;
             }
             return crate::GuiOutput::empty();
         }
-        let collision = mirl::math::collision::Rectangle::<_, false>::new(
-            0,
-            0,
-            self.width as i32,
-            self.height as i32,
+        let collision = mirl::math::geometry::Pos2D::<
+            _,
+            mirl::math::collision::Rectangle<_, false>,
+        >::new(
+            (0.0, 0.0),
+            mirl::math::collision::Rectangle::new((
+                self.width as f32,
+                self.height as f32,
+            )),
         );
         if let Some(mouse_position) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_position);
@@ -218,39 +243,32 @@ impl DearMirlGuiModule for Button {
                     self.needs_redraw.set(true);
                     self.hovering = info.container_id;
                 }
-                if info.mouse_info.left.clicked
-                    && let Some(function) = &self.function_on_click
-                {
-                    function();
-                } else if info.mouse_info.left.released
-                    && let Some(function) = &self.function_on_release
-                {
-                    function();
-                }
-                if (self.pressed && info.mouse_info.left.down)
+                (self.interaction_function)(info.mouse_info.left);
+
+                if (self.pressed.down && info.mouse_info.left.down)
                     || info.mouse_info.left.clicked
                 {
                     // if !self.pressed {
                     //     self.needs_redraw.set(true);
                     // }
-                    self.pressed = true;
+                    self.pressed.update(true);
                 } else {
-                    self.pressed = false;
+                    self.pressed.update(false);
                 }
             } else {
                 if self.hovering == info.container_id {
                     self.hovering = 0;
-                    self.pressed = false;
+                    self.pressed.update(false);
                 }
                 if self.hovering != 0 {
                     self.needs_redraw.set(true);
                 }
             }
         } else {
-            self.pressed = false;
+            self.pressed.update(false);
             self.hovering = 0;
         }
-        if self.pressed {
+        if self.pressed.down {
             crate::GuiOutput::default(FocusTaken::FunctionallyTaken)
         } else if self.hovering == info.container_id {
             crate::GuiOutput::default(FocusTaken::VisuallyTaken)
@@ -267,4 +285,35 @@ impl DearMirlGuiModule for Button {
         }
     }
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
+}
+
+/// A trait to get/set values using the path instead of manually getting the module
+pub trait ButtonModulePathSupport {
+    /// Check if the button is pressed down (continues)
+    fn is_down(&self) -> bool;
+    /// Check if the button has been clicked (1 tick)
+    fn clicked(&self) -> bool;
+    /// Set the text of the button
+    fn set_text(&self, text: String);
+}
+
+impl ButtonModulePathSupport for ModulePath<Button> {
+    fn is_down(&self) -> bool {
+        crate::module_manager::get_module_as_mut::<_, bool>(self, |button| {
+            button.pressed.down
+        })
+        .unwrap_or_default()
+    }
+    fn clicked(&self) -> bool {
+        crate::module_manager::get_module_as_mut::<_, bool>(self, |button| {
+            button.pressed.clicked
+        })
+        .unwrap_or_default()
+    }
+    fn set_text(&self, text: String) {
+        let _ =
+            crate::module_manager::get_module_as_mut::<_, ()>(self, |button| {
+                button.set_text(text);
+            });
+    }
 }

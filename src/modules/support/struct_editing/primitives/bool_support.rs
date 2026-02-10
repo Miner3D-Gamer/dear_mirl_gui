@@ -1,20 +1,21 @@
 use crate::{
-    DearMirlGuiModule, get_formatting,
+    DearMirlGuiModule,
     modules::support::struct_editing::{
         DynSyncInspectable, Inspectable, InspectableType,
     },
+    prelude::*,
 };
 
 impl InspectableType for bool {
     type Inspectable = InspectBool;
-    fn new_from_value(value: Self) -> Self::Inspectable {
-        InspectBool {
+    fn new_from_value(value: Self) -> Option<Self::Inspectable> {
+        Some(InspectBool {
             state: crate::modules::CheckBox::new_2_state(
                 get_formatting().height,
                 String::new(),
             )
             .with_state(usize::from(value)),
-        }
+        })
     }
     // fn sync_from_value(&self, value: &mut Self::Inspectable) {
     //     value.state.checked = usize::from(*self);
@@ -57,7 +58,7 @@ impl DearMirlGuiModule for InspectBool {
         &mut self,
         formatting: &crate::Formatting,
         info: &crate::ModuleDrawInfo,
-    ) -> (mirl::Buffer, crate::InsertionMode) {
+    ) -> (mirl::prelude::Buffer, crate::module_manager::InsertionMode) {
         self.state.draw(formatting, info)
     }
 

@@ -1,5 +1,5 @@
 #![allow(clippy::significant_drop_tightening)]
-use mirl::Buffer;
+use mirl::prelude::Buffer;
 
 static CONTAINER_ID: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(1);
@@ -10,7 +10,7 @@ pub fn get_available_id() -> usize {
 }
 
 use crate::{
-    DearMirlGuiModule, Formatting, GuiReturnsModule, ModulePath, WhatAmI,
+    DearMirlGuiModule, Formatting, GuiReturnModuleError, ModulePath, WhatAmI,
     gui::ModuleContainer,
 };
 
@@ -57,7 +57,9 @@ pub fn get_formatting() -> std::sync::Arc<Formatting> {
         .read()
         .expect("Failed to acquire formatting lock")
         .as_ref()
-        .expect("No formatting available")
+        .expect("No formatting available!\
+                \n> Please use `dear_mirl_gui::module_manager::set_formatting(dear_mirl_gui::Formatting::default(&font, {height}));`\
+                \n> To get the font your os uses: `FileSystem::get_default_font()` (Required mirl flags: `font_support`, `std`, struct found in `mirl::prelude::FileSystem`)")
         .clone()
 }
 // type BufferAndOffset = std::sync::RwLock<(Buffer, (isize, isize))>;
@@ -350,7 +352,7 @@ pub fn needs_redraw() -> bool {
     false
 }
 /// Get a module by name and execute a function on it (immutable access)
-pub fn get_module<R>(
+pub fn get_module_raw<R>(
     name: u32,
     f: impl FnOnce(&dyn DearMirlGuiModule) -> R,
 ) -> Option<R> {
@@ -361,7 +363,7 @@ pub fn get_module<R>(
 }
 
 /// Get a module by name and execute a function on it (mutable access)
-pub fn get_module_mut<R>(
+pub fn get_module_raw_mut<R>(
     path: u32,
     f: impl FnOnce(&mut dyn DearMirlGuiModule) -> R,
 ) -> Option<R> {
@@ -377,21 +379,15 @@ pub fn get_module_mut<R>(
 /// ```ignore
 ///                            // Module Type, Function Return, Module ID, Function
 ///                            // v                       v     v            v
-/// let progress = get_module_as::<crate::modules::Slider, f32> (&module_path, |slider| slider.progress);
-/// match progress {
-///     GuiReturnsModule::AllGood(value) => println!("Current progress: {value}"),
-///     GuiReturnsModule::UnableToFindID(id) => println!("Module not found: {id}"),
-///     GuiReturnsModule::CastingAsWrongModule { wrong, correct, id } => {
-///         println!("Wrong type cast for {id}: expected {correct}, got {wrong}")
-///     }
-/// }
+/// let progress = get_module_as::<crate::modules::Slider, f32> (&module_path, |slider| slider.progress).unwrap();
 /// ```
-#[must_use]
+/// # Errors
+/// When the given module cannot be found or the given module type is wrong
 pub fn get_module_as<T: 'static + WhatAmI, R>(
     module_path: &ModulePath<T>,
     f: impl FnOnce(&T) -> R,
-) -> GuiReturnsModule<R> {
-    let module = get_module(module_path.id, |module| {
+) -> Result<R, GuiReturnModuleError> {
+    let module = get_module_raw(module_path.id, |module| {
         (
             module.as_any().downcast_ref::<T>().map(f),
             std::any::type_name::<T>(),
@@ -400,20 +396,24 @@ pub fn get_module_as<T: 'static + WhatAmI, R>(
     });
     module.map_or_else(
         || {
-            GuiReturnsModule::UnableToFindID(
-                module_path.id,
-                std::any::type_name::<T>().to_string(),
-            )
+            Err({
+                GuiReturnModuleError::UnableToFindID(
+                    module_path.id,
+                    std::any::type_name::<T>().to_string(),
+                )
+            })
         },
         |value| {
             let (val, wrongly_used, correct) = value;
             val.map_or_else(
-                || GuiReturnsModule::CastingAsWrongModule {
-                    wrong: wrongly_used.to_string(),
-                    correct: correct.to_string(),
-                    id: module_path.id,
+                || {
+                    Err(GuiReturnModuleError::CastingAsWrongModule {
+                        wrong: wrongly_used.to_string(),
+                        correct: correct.to_string(),
+                        id: module_path.id,
+                    })
                 },
-                |output| GuiReturnsModule::AllGood(output),
+                |output| Ok(output),
             )
         },
     )
@@ -433,12 +433,13 @@ pub fn get_module_as<T: 'static + WhatAmI, R>(
 ///     }
 /// });
 /// ```
-#[must_use]
+/// # Errors
+/// When the given module cannot be found or the given module type is wrong
 pub fn get_module_as_mut<T: 'static, R>(
     module_path: &ModulePath<T>,
     f: impl FnOnce(&mut T) -> R,
-) -> GuiReturnsModule<R> {
-    let module = get_module_mut(module_path.id, |module| {
+) -> Result<R, GuiReturnModuleError> {
+    let module = get_module_raw_mut(module_path.id, |module| {
         (
             module.as_any_mut().downcast_mut::<T>().map(f),
             std::any::type_name::<T>().to_string(),
@@ -448,20 +449,24 @@ pub fn get_module_as_mut<T: 'static, R>(
     });
     module.map_or_else(
         || {
-            GuiReturnsModule::UnableToFindID(
-                module_path.id,
-                std::any::type_name::<T>().to_string(),
-            )
+            Err({
+                GuiReturnModuleError::UnableToFindID(
+                    module_path.id,
+                    std::any::type_name::<T>().to_string(),
+                )
+            })
         },
         |value| {
             let (val, wrongly_used, correct) = value;
             val.map_or_else(
-                || GuiReturnsModule::CastingAsWrongModule {
-                    wrong: wrongly_used,
-                    correct,
-                    id: module_path.id,
+                || {
+                    Err(GuiReturnModuleError::CastingAsWrongModule {
+                        wrong: wrongly_used,
+                        correct,
+                        id: module_path.id,
+                    })
                 },
-                |output| GuiReturnsModule::AllGood(output),
+                |output| Ok(output),
             )
         },
     )

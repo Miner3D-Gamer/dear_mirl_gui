@@ -1,5 +1,6 @@
-use crate::{Buffer, DearMirlGuiModule, FocusTaken, InsertionMode};
+use mirl::prelude::Buffer;
 
+use crate::{DearMirlGuiModule, FocusTaken, module_manager::InsertionMode};
 #[derive(Debug, Clone, PartialEq)]
 #[allow(unpredictable_function_pointer_comparisons)]
 /// A clickable image button
@@ -72,11 +73,8 @@ impl DearMirlGuiModule for ImageButton {
         {
             self.image.clone()
         } else {
-            self.image.resize_content(
-                self.width,
-                self.height,
-                self.resizing_method,
-            )
+            self.image
+                .resize_content((self.width, self.height), self.resizing_method)
         };
 
         if self.hovering == info.container_id {
@@ -116,11 +114,15 @@ impl DearMirlGuiModule for ImageButton {
             return crate::GuiOutput::empty();
         }
 
-        let collision = mirl::math::collision::Rectangle::<_, false>::new(
-            0,
-            0,
-            self.width as i32,
-            self.height as i32,
+        let collision = mirl::math::geometry::Pos2D::<
+            _,
+            mirl::math::collision::Rectangle<_, false>,
+        >::new(
+            (0.0, 0.0),
+            mirl::math::collision::Rectangle::new((
+                self.width as f32,
+                self.height as f32,
+            )),
         );
 
         if let Some(mouse_position) = info.mouse_pos {

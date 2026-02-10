@@ -1,8 +1,8 @@
-use std::any::TypeId;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{any::TypeId, cell::RefCell, rc::Rc};
 
-use crate::{AnyCasting, Buffer, DearMirlGuiModule, InsertionMode};
+use mirl::render::Buffer;
+
+use crate::{AnyCasting, DearMirlGuiModule, module_manager::InsertionMode};
 
 /// Type-erased container that preserves concrete type access with single storage
 #[derive(Clone, Debug)]
@@ -55,7 +55,7 @@ impl ModuleContainer {
 
     /// Check if container holds a specific type
     #[must_use]
-    pub fn is<T: 'static>(&self) -> bool {
+    pub const fn is<T: 'static>(&self) -> bool {
         TypeId::of::<T>() == self.type_id
     }
 

@@ -1,5 +1,6 @@
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
+use mirl::{prelude::Buffer, render};
 
+use crate::{DearMirlGuiModule, module_manager::InsertionMode};
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Create a visual margin between modules
 pub struct Separator {
@@ -67,25 +68,23 @@ impl DearMirlGuiModule for Separator {
         let mut buffer = Buffer::new_empty((self.width, self.height));
         if self.is_vertical {
             let x = self.width / 2 - self.thickness / 2;
-            render::draw_line_straight(
+            render::draw_line_straight::<false>(
                 &mut buffer,
                 (x, 0),
                 self.height,
                 true,
                 formatting.foreground_color,
                 self.thickness as isize,
-                false,
             );
         } else {
             let y = self.height / 2 - self.thickness / 2;
-            render::draw_line_straight(
+            render::draw_line_straight::<true>(
                 &mut buffer,
                 (0, y),
                 self.width,
                 false,
                 formatting.foreground_color,
                 self.thickness as isize,
-                true,
             );
         }
         (buffer, InsertionMode::ReplaceAll)

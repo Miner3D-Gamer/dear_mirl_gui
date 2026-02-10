@@ -1,6 +1,8 @@
-use crate::{Buffer, DearMirlGuiModule, InsertionMode};
+use mirl::prelude::Buffer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::{DearMirlGuiModule, module_manager::InsertionMode};
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 /// Make the next module reside next to the previous
 pub struct SameLine {
     width: crate::DearMirlGuiCoordinateType,
@@ -15,9 +17,10 @@ impl SameLine {
         }
     }
 }
+use mirl::math::{ConstZero, ConvenientOps};
 impl Default for SameLine {
     fn default() -> Self {
-        Self::new(0)
+        Self::new(crate::DearMirlGuiCoordinateType::ZERO)
     }
 }
 
@@ -27,7 +30,7 @@ impl DearMirlGuiModule for SameLine {
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        0
+        crate::DearMirlGuiCoordinateType::ZERO
     }
     fn get_width(
         &mut self,
@@ -68,7 +71,7 @@ impl DearMirlGuiModule for SameLine {
         let previous_module = &modules[*previous_idx];
         *current.0 += self.width + previous_module.get_width(formatting);
         *current.1 += -(previous_module.get_height(formatting)
-            + formatting.vertical_margin as crate::DearMirlGuiCoordinateType
-                * 2);
+            + (formatting.vertical_margin as crate::DearMirlGuiCoordinateType)
+                .double());
     }
 }

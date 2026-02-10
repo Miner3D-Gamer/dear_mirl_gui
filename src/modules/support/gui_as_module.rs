@@ -1,7 +1,10 @@
-use mirl::{extensions::*, directions::NormalDirections};
+use mirl::{
+    directions::NormalDirections,
+    math::{SetOne, SetZero},
+    prelude::Buffer,
+};
 
-use crate::{Buffer, DearMirlGui, DearMirlGuiModule, InsertionMode};
-
+use crate::{DearMirlGui, DearMirlGuiModule, module_manager::InsertionMode};
 // #[derive(Debug, Clone)]
 // /// A wrapper between an internal gui accessed with the .gui field and the module system of another window
 // pub struct WindowEmulator<const FAST: bool, const USE_CACHE: bool> {
@@ -39,8 +42,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
 {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
     fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
-        self.needs_redraw
-            .set(crate::modules::misc::determine_need_redraw(need_redraw));
+        self.needs_redraw =
+            crate::modules::misc::determine_need_redraw(need_redraw);
     }
     fn get_height(
         &mut self,
@@ -55,23 +58,10 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
         Self::get_width(self) as crate::DearMirlGuiCoordinateType
     }
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
-        let window_offset = { (self.x, self.y) };
-        //println!("{:?}, {:?}", window_offset, self.gui.borrow().last_mouse_pos);
-        self.update(
-            info.mouse_pos.map(|pos| {
-                pos.add(window_offset.try_tuple_into().unwrap_or_default())
-            }),
-            info.mouse_scroll,
-            info.mouse_info.left.down,
-            info.mouse_info.middle.down,
-            info.mouse_info.right.down,
-            info.pressed_keys,
-            info.delta_time,
-            info.clipboard_data,
-        )
+        self.update_using_module_data(*info, &crate::GuiOutput::empty())
     }
     fn need_redraw(&mut self) -> bool {
-        true
+        self.needs_redraw
     }
     fn draw(
         &mut self,
@@ -82,6 +72,8 @@ impl<const FAST: bool, const USE_CACHE: bool> DearMirlGuiModule
     }
     fn added(&mut self, _container_id: usize) {
         self.allow_dragging = false;
+        self.x.set_zero();
+        self.y.set_one();
 
         let mut directions = NormalDirections::all_false();
         directions.bottom = true;

@@ -1,9 +1,10 @@
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
+use mirl::{prelude::Buffer, render};
 
+use crate::{DearMirlGuiModule, module_manager::InsertionMode};
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq)]
 /// A simple text module
-pub struct Text {
+pub struct TextDisplay {
     /// The text it contains
     pub text: String,
     //#[allow(missing_docs)]
@@ -13,7 +14,7 @@ pub struct Text {
     #[allow(missing_docs)]
     pub needs_redraw: std::cell::Cell<bool>,
 }
-impl Text {
+impl TextDisplay {
     #[allow(missing_docs)]
     #[must_use]
     pub fn new(
@@ -28,14 +29,16 @@ impl Text {
             needs_redraw: std::cell::Cell::new(true),
         }
     }
-    /// Set the text the module is displaying (tip: [`format!()`](format!) exists)
+    /// Set the text the module is displaying (tip: Use [`format!()`](format!) for easier formatting)
     pub fn set_text(&mut self, text: String) {
-        self.text = text;
-        self.needs_redraw = std::cell::Cell::new(true);
+        if text != self.text {
+            self.text = text;
+            self.needs_redraw.set(true);
+        }
     }
 }
 
-impl DearMirlGuiModule for Text {
+impl DearMirlGuiModule for TextDisplay {
     fn apply_new_formatting(&mut self, _formatting: &crate::Formatting) {}
     fn set_need_redraw(&mut self, need_redraw: Vec<(usize, bool)>) {
         self.needs_redraw.set(super::misc::determine_need_redraw(need_redraw));

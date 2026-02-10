@@ -1,9 +1,6 @@
-use mirl::{extensions::RepeatData, platform::CursorStyle};
+use mirl::{extensions::RepeatData, platform::CursorStyle, prelude::Buffer, render};
 
-use crate::{
-    Buffer, DearMirlGuiModule, FocusTaken, InsertionMode, get_formatting,
-    render,
-};
+use crate::{DearMirlGuiModule, FocusTaken, module_manager::InsertionMode, prelude::get_formatting};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A simple selection module
@@ -30,10 +27,11 @@ impl Selection {
     /// For the formatting use the .formatting field from the window
     pub fn new(
         text: &[String],
-        height: usize,
         radio_buttons: bool,
         initial_states: Option<Vec<bool>>,
     ) -> Self {
+        let formatting = get_formatting();
+        let height = formatting.height;
         Self {
             text: text.to_vec(),
             height,
@@ -45,6 +43,12 @@ impl Selection {
             total_height: 0,
             radio_buttons,
         }
+    }
+    #[must_use]
+    /// An inline function for setting a custom height
+    pub const fn with_height(mut self, height: usize) -> Self {
+        self.height = height;
+        self
     }
     /// Recalculate the total height of the module
     #[must_use]
@@ -165,21 +169,30 @@ impl DearMirlGuiModule for Selection {
         let mut focus_taken = FocusTaken::FocusFree;
         if let Some(mouse_pos) = info.mouse_pos {
             let mut offset = 0;
-
+            // if info.container_id == 3 {
+            //     println!(">{mouse_pos:?}");
+            // }
             for (idx, _) in self.text.iter().enumerate() {
-                let collides = if self.radio_buttons {
-                    mirl::math::collision::Circle::<i32, false>::new(
-                        0,
-                        offset as i32,
-                        self.height as i32,
+                let collides = if self.radio_buttons && false {
+                    // TODO: THIS IS CAUSING PROBLEMS. It could be because of how the Circle has been split into a pos and a shape
+                    mirl::math::geometry::Pos2D::<
+                        _,
+                        mirl::math::collision::Circle<f32, false>,
+                    >::new(
+                        (0.0, offset as f32),
+                        mirl::math::collision::Circle::new(self.height as f32),
                     )
                     .does_area_contain_point(mouse_pos)
                 } else {
-                    mirl::math::collision::Rectangle::<i32, false>::new(
-                        0,
-                        offset as i32,
-                        self.height as i32,
-                        self.height as i32,
+                    mirl::math::geometry::Pos2D::<
+                        _,
+                        mirl::math::collision::Rectangle<f32, false>,
+                    >::new(
+                        (0.0, offset as f32),
+                        mirl::math::collision::Rectangle::new((
+                            self.height as f32,
+                            self.height as f32,
+                        )),
                     )
                     .does_area_contain_point(mouse_pos)
                 };

@@ -151,3 +151,63 @@ impl GuiOutput {
         self
     }
 }
+impl std::error::Error for GuiReturnModuleError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// The return further info that just [`Option::None`]/[`Option::Some`]
+pub enum GuiReturnModuleError {
+    // /// All went well and you can use the module no problem
+    // AllGood(T),
+    /// There was no module with this ID
+    UnableToFindID(u32, String),
+    /// There was an module with this ID, however the used type was not correct
+    CastingAsWrongModule {
+        /// The correct type the module should be casted as
+        correct: String,
+        /// The incorrect type the module was requested to be casted into
+        wrong: String,
+        /// The id of the module
+        id: u32,
+    },
+    // /// For when the unexpected happens
+    // Misc(String),
+}
+// impl<T: 'static> Unwrap<T> for GuiReturnModuleError<T> {
+//     fn unwrap(self) -> T {
+
+//     }fn unwrap_or(self, default: T) -> T {
+//         match self {
+//             Self::AllGood()
+//         }
+
+//     }unsafe fn unwrap_unchecked(self) -> T {
+
+//     }
+// }
+
+impl std::fmt::Display for GuiReturnModuleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CastingAsWrongModule {
+                wrong,
+                correct,
+                id,
+            } => {
+                write!(
+                    f,
+                    "Module with id '{id}' is being cast as the wrong type;\n\tRequested module type: '{wrong}', \n\tCorrect module type: '{correct}'"
+                )
+            }
+            Self::UnableToFindID(id, object) => {
+                write!(
+                    f,
+                    "Unable to find a module of type {object:?} with the id of {id}"
+                )
+            } // Self::Misc(stuff) => {
+              //     wr
+              //     panic!("An error occurred: {stuff}")
+              // }
+        }
+        //Ok(())
+    }
+}

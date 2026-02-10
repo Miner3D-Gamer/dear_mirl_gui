@@ -1,7 +1,8 @@
 //use mirl::extensions::*;
 
-use crate::{Buffer, DearMirlGuiModule, InsertionMode};
+use mirl::prelude::Buffer;
 
+use crate::{DearMirlGuiModule, module_manager::InsertionMode};
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Reset the doings of all previous modules that have defined an offset
 ///
@@ -67,6 +68,6 @@ impl DearMirlGuiModule for ResetOffset {
         // if here == 0 {
         //     return;
         // }
-        *current.0 = 0;
+        *current.0 = mirl::math::ConstNumbers128::CONST_0;
     }
 }

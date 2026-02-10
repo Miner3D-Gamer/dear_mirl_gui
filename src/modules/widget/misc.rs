@@ -1,7 +1,15 @@
-use mirl::{platform::Buffer, render};
+use mirl::{
+    misc::EasyUnwrapUnchecked,
+    render::{self, Buffer, BufferGetPixel, BufferSetPixel},
+};
 
 /// Considering the distance the mouse moved and the width of the container, adjust the progress
-pub fn adjust_progress_by_mouse<T: mirl::math::NumberWithMonotoneOps + Copy>(
+pub fn adjust_progress_by_mouse<
+    T: core::ops::Sub<Output = T>
+        + core::ops::Div<Output = T>
+        + core::ops::Add<Output = T>
+        + Copy,
+>(
     current_progress: T,
     mouse_x: T,
     width: T,
@@ -42,7 +50,7 @@ pub fn draw_blocking(size: usize, color: u32) -> Buffer {
 pub fn get_closest_char_pos_to_mouse_pos(
     text: &str,
     height: f32,
-    font: &fontdue::Font,
+    font: &mirl::dependencies::fontdue::Font,
     x: f32,
 ) -> usize {
     if x <= 0.0 {
@@ -111,4 +119,35 @@ pub fn merge_selections(regions: &[(usize, usize)]) -> Vec<(usize, usize)> {
 /// When helper function when a module doesn't need to look differently on different guis
 pub fn determine_need_redraw(list: Vec<(usize, bool)>) -> bool {
     list.iter().any(|x| x.1)
+}
+#[must_use]
+/// Generate a fallback buffer containing an error message
+pub fn new_buffer_error(string: &str) -> (Buffer, crate::module_manager::InsertionMode) {
+    let formatting = crate::module_manager::get_formatting();
+    (
+        Buffer::new_with_text(
+            string,
+            formatting.height,
+            &formatting.font,
+            formatting.text_color,
+            formatting.background_color,
+            None,
+        )
+        .easy_unwrap_unchecked(), // We will never use a text size so big it'll actually crash, right?
+        crate::module_manager::InsertionMode::ReplaceAll,
+    )
+}
+/// A "shimmer" where pixels are simply interpolated between the old and new color
+///
+/// Used for the text highlighting in this lib
+pub const fn shimmer(
+    buffer: &mut (impl [const] BufferGetPixel + [const] BufferSetPixel),
+    xy: (usize, usize),
+    new_color: u32,
+) {
+    let under = buffer.get_pixel_unsafe(xy);
+    buffer.set_pixel_safe(
+        xy,
+        mirl::graphics::interpolate_color_rgb_u32_f32(under, new_color, 0.5),
+    );
 }

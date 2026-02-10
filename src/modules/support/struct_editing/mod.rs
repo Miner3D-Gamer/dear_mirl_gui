@@ -1,10 +1,11 @@
-use mirl::Buffer;
-use mirl::extensions::*;
-use mirl::render;
+use mirl::{
+    extensions::*,
+    render::{self, Buffer},
+};
 
-use crate::ModuleDrawInfo;
-use crate::ModuleUpdateInfo;
-use crate::{AnyCasting, AnyCloning, Formatting};
+use crate::{
+    AnyCasting, AnyCloning, Formatting, ModuleDrawInfo, ModuleUpdateInfo,
+};
 
 /// Support builtin types
 pub mod primitives;
@@ -14,11 +15,11 @@ pub trait InspectableType {
     /// The target type for getting/setting values
     type Inspectable: Inspectable;
     /// Create an inspectable type from the raw value
-    fn new_from_value(value: Self) -> Self::Inspectable;
+    fn new_from_value(value: Self) -> Option<Self::Inspectable>;
 }
 // default impl<I: Inspectable + std::default::Default> InspectableType for I {
 //     type Inspectable = I;
-//     fn new_from_value(_: Self) -> Self::Inspectable {
+//     fn new_from_value(_: Self) -> Option<Self::Inspectable> {
 //         std::default::Default::default()
 //     }
 // }
@@ -30,8 +31,7 @@ pub trait Inspectable:
     + Sync
     + AnyCasting
     + AnyCloning
-    + crate::DearMirlGuiModule
-    //+ mirl::misc::Comparable
+    + crate::DearMirlGuiModule //+ mirl::misc::Comparable
 {
     /// Get all sub values
     fn get_fields_mut(&mut self) -> Vec<(&'static str, DynSyncInspectable)>;
@@ -141,7 +141,7 @@ pub fn draw_inspectable(
         offset = offset.add((0, formatting.vertical_margin as isize));
 
         let img = thing.draw(formatting, module_draw_info).0;
-        render::draw_buffer_on_buffer_1_to_1::<true, false, false, false>(
+        render::draw_buffer_on_buffer::<true, false, false, false>(
             &mut buffer,
             &img,
             offset,
@@ -161,7 +161,7 @@ pub fn draw_inspectable(
                 Some(name),
                 module_draw_info,
             )?;
-            render::draw_buffer_on_buffer_1_to_1::<true, false, false, false>(
+            render::draw_buffer_on_buffer::<true, false, false, false>(
                 &mut buffer,
                 &img,
                 offset,

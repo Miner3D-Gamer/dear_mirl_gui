@@ -1,4 +1,5 @@
-use crate::{Buffer, DearMirlGuiModule, InsertionMode};
+use crate::{DearMirlGuiModule, module_manager::InsertionMode};
+use mirl::prelude::Buffer;
 
 type FunctionModifyCursor = fn(
     &[crate::gui::extra::ModuleContainer],
@@ -33,13 +34,13 @@ impl DearMirlGuiModule for CustomOffset {
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        0
+        mirl::math::ConstNumbers128::CONST_0
     }
     fn get_width(
         &mut self,
         _formatting: &crate::Formatting,
     ) -> crate::DearMirlGuiCoordinateType {
-        0
+        mirl::math::ConstNumbers128::CONST_0
     }
     fn update(&mut self, _info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         crate::GuiOutput::empty()

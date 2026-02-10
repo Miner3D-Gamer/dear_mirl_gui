@@ -1,21 +1,21 @@
 use crate::{
-    DearMirlGuiModule, get_formatting,
+    DearMirlGuiModule,
     modules::support::struct_editing::{
         DynSyncInspectable, Inspectable, InspectableType,
     },
+    prelude::*,
 };
 
 impl InspectableType for String {
     type Inspectable = InspectString;
-    fn new_from_value(value: Self) -> Self::Inspectable {
-        InspectString {
+    fn new_from_value(value: Self) -> Option<Self::Inspectable> {
+        Some(InspectString {
             state: crate::modules::TextInput::new(
-                get_formatting().height,
                 get_formatting().height * 3,
                 1,
                 Some(crate::modules::text_input::ready_text(&value, 4)),
             ),
-        }
+        })
     }
     // fn sync_from_value(&self, value: &mut Self::Inspectable) {
     //     value.state.text = crate::modules::text_input::ready_text(self, 4);
@@ -81,7 +81,7 @@ impl Inspectable for InspectString {
     //     &mut self,
     //     formatting: &crate::Formatting,
     //     info: &crate::ModuleDrawInfo,
-    // ) -> mirl::Buffer {
+    // ) -> mirl::prelude::Buffer {
     //     self.state.draw(formatting, info).0
     // }
 
@@ -94,7 +94,7 @@ impl DearMirlGuiModule for InspectString {
         &mut self,
         formatting: &crate::Formatting,
         info: &crate::ModuleDrawInfo,
-    ) -> (mirl::Buffer, crate::InsertionMode) {
+    ) -> (mirl::prelude::Buffer, crate::module_manager::InsertionMode) {
         self.state.draw(formatting, info)
     }
 

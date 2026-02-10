@@ -11,8 +11,8 @@ pub enum FocusTaken {
 impl FocusTaken {
     /// If the focus is not free
     #[must_use]
-    pub fn is_focus_taken(self) -> bool {
-        self != Self::FocusFree
+    pub const fn is_focus_taken(self) -> bool {
+        !matches!(self, Self::FocusFree)
     }
 }
 impl std::ops::BitOr for FocusTaken {

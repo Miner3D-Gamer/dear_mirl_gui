@@ -1,18 +1,18 @@
 [package]
 name = "dear_mirl_gui"
-version = "2.2.0"
+version = "3.0.0"
 edition = "2024"
 description = "A 'Dear ImGui' inspired RmGui lib for 'Mirl'"
 license = "MIT"
 exclude = ["./modules/concepts/*"]
 repository = "https://github.com/Miner3D-Gamer/dear_mirl_gui"
-keywords = ["gui", "rmgui", "mirl", "debugging", "widgets"]
+keywords = ["gui", "rmgui", "mirl", "debugging", "widgets", "text_editor"]
 
 [dependencies]
 
 # reflectable_derive = { path = "../reflectable_derive" }
 
-mirl = { version = ">=7.1.0", default-features = false, features = [
+mirl = { version = ">=9.0.1", default-features = false, features = [
     "font_support",
     #"svg",
     "keycodes",
@@ -21,19 +21,17 @@ mirl = { version = ">=7.1.0", default-features = false, features = [
     "num_traits",
 ] }
 
-fontdue = ">=0.9.3"
-indexmap = ">=2.11"
-num-traits = ">=0.2"
+# indexmap = ">=2.11"
 
 
 [features]
-default = []
-# BAD_APPLE = []
+default = ["module_path_naming"]
 draw_safe = []
 draw_debug = []
 focus_debug = []
-# f128_support = []
 experimental = ["debug-window"]
+coordinate_type_f32 = []
+module_path_naming = []
 
 debug-window = [
     "mirl/minifb",
@@ -42,5 +40,5 @@ debug-window = [
     "mirl/std",
 ]
 
-[profile.release]
-debug = true
+# [profile.release]
+# debug = true

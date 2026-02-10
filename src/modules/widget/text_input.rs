@@ -1,16 +1,19 @@
-use mirl::graphics::rgb_to_u32;
-use mirl::misc::keybinds::{KeyBind, sort_actions};
-use mirl::misc::text_position::TextPosition;
-use mirl::platform::keycodes::StringToKeyCodes;
-use mirl::render::draw_text_antialiased_isize;
 use mirl::{
     extensions::*,
-    platform::{CursorStyle, keycodes::KeyCode},
+    graphics::rgb_to_u32,
+    misc::keybinds::{KeyBind, sort_actions},
+    platform::{
+        CursorStyle,
+        keycodes::{KeyCode, StringToKeyCodes},
+    },
+    prelude::Buffer,
+    render::{self, draw_text_antialiased_isize},
+    text::position::TextPosition,
 };
 
 use crate::{
-    Buffer, DRAW_SAFE, DearMirlGuiModule, FocusTaken, InsertionMode,
-    ModuleUpdateInfo, get_formatting, render,
+    DRAW_SAFE, DearMirlGuiModule, FocusTaken, ModuleUpdateInfo,
+    module_manager::InsertionMode, modules::misc::shimmer, prelude::get_formatting,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -515,7 +518,6 @@ pub fn default_keybind_layout() -> Vec<KeyBind<Actions>> {
 /// - ~~Advanced caret movement [Home/End keys (beginning/end of line), Ctrl+Home/End (beginning/end of document), Bracket matching (Bracket is portal)]~~
 /// - ~~Show line number~~
 /// - ~~Text selection/highlighting (Shift selection, ctrl + a)~~
-///
 #[allow(clippy::struct_excessive_bools)]
 pub struct TextInput {
     /// The width of the writeable section + line counter
@@ -570,6 +572,9 @@ pub struct TextInput {
     pub blacklist: Vec<KeyCode>,
     /// If the purpose of the blacklist should be inverted
     pub blacklist_is_whitelist: bool,
+    /// Drag to select
+    /// TODO: Implement drag to move
+    pub dragging: bool,
 }
 /// Available menus
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -643,6 +648,15 @@ impl Caret {
     pub const fn move_to_pos(&mut self, position: TextPosition) {
         self.line = position.line;
         self.column = position.column;
+    }
+    #[must_use]
+    /// Check if the caret is inside the area, checks both the start and end
+    pub const fn is_in_area(
+        &mut self,
+        area: (TextPosition, TextPosition),
+    ) -> (bool, bool) {
+        let points = self.get_highlighted_area();
+        (is_point_in_area(area, points.0), is_point_in_area(area, points.1))
     }
     // /// Move cursor down one d safely
     // pub fn move_down(&mut self, module: &TextInput) {
@@ -823,8 +837,10 @@ impl TextInput {
     }
     /// Move the caret up if it is under a line
     pub fn move_caret_under_line_up(&mut self, line: usize) {
-        if self.caret[0].line() >= line && self.caret[0].line() != 0 {
-            self.move_up(0);
+        for idx in 0..self.caret.len() {
+            if self.caret[idx].line() >= line && self.caret[idx].line() != 0 {
+                self.move_up(idx);
+            }
         }
     }
 
@@ -1149,7 +1165,7 @@ impl TextInput {
     #[must_use]
     #[allow(clippy::inline_always)]
     /// Clamp a value to the line count
-    pub fn clamp_to_line_count(&self, other: usize) -> usize {
+    pub const fn clamp_to_line_count(&self, other: usize) -> usize {
         self.line_count_idx().min(other)
     }
     #[allow(clippy::missing_panics_doc)]
@@ -1368,7 +1384,10 @@ impl TextInput {
         }
         longest
     }
-    fn get_content_size(&self, font: &fontdue::Font) -> (f32, f32) {
+    fn get_content_size(
+        &self,
+        font: &mirl::dependencies::fontdue::Font,
+    ) -> (f32, f32) {
         let width = render::get_text_width(
             &self.get_longest_line(),
             self.text_height,
@@ -1499,32 +1518,37 @@ impl TextInput {
         self.placeholder_text = text.to_string();
         self
     }
+    /// An inline setter for the line height
+    #[must_use]
+    pub const fn with_line_height(mut self, height: usize) -> Self {
+        self.line_height = height;
+        self
+    }
+    /// An inline setter for the line height
+    #[must_use]
+    pub const fn with_text_height(mut self, height: f32) -> Self {
+        self.text_height = height;
+        self
+    }
 }
 
 impl TextInput {
     #[allow(missing_docs)]
     #[must_use]
-    pub fn new(
-        line_height: usize,
-        width: usize,
-        lines: usize,
-        text: Option<Vec<String>>,
-    ) -> Self {
+    pub fn new(width: usize, lines: usize, text: Option<Vec<String>>) -> Self {
+        let formatting = get_formatting();
+        let text_height = formatting.height as f32;
+
         Self {
             width,
-            line_height,
+            line_height: (text_height * 1.2) as usize,
             max_lines: lines,
-            text: text.clone().unwrap_or_else(|| Vec::from([String::new()])),
+            text: text.unwrap_or_else(|| Vec::from([String::new()])),
             needs_redraw: (true),
             selected: 0,
             last_keys_pressed: Vec::new(),
-            // Yummy
-            caret: vec![Caret::new(
-                text.clone().unwrap_or_default().len().saturating_sub(1),
-                text.unwrap_or_default()
-                    .last()
-                    .map_or_default(|x| x.chars().count()),
-            )],
+            // Yummy, carrot
+            caret: vec![],
             //highlighted: std::default::Default::default(),
             remove_behind: false,
             last_states: Vec::new(),
@@ -1552,9 +1576,10 @@ impl TextInput {
             retain_indent: true,
             menu_open: TextInputMenu::None,
             show_line_numbers: true,
-            text_height: line_height as f32 * 0.8,
+            text_height,
             blacklist: Vec::new(),
             blacklist_is_whitelist: false,
+            dragging: false,
         }
     }
 
@@ -1704,6 +1729,7 @@ impl TextInput {
         self.text.remove(other);
         self.move_caret_under_line_up(other);
     }
+
     /// Delete the whole line the caret is on
     pub fn delete_current_line(&mut self, idx: usize) {
         if self.caret[idx].is_highlighting() {
@@ -1771,10 +1797,12 @@ impl TextInput {
     }
     /// Swap the postion of the cursor with another line
     pub fn swap_caret_position(&mut self, line1: usize, line2: usize) {
-        if self.caret[0].line() == line1 {
-            self.caret[0].line = line2;
-        } else if self.caret[0].line() == line2 {
-            self.caret[0].line = line1;
+        for caret in &mut self.caret {
+            if caret.line() == line1 {
+                caret.line = line2;
+            } else if caret.line() == line2 {
+                caret.line = line1;
+            }
         }
     }
     /// Undo the last action
@@ -2139,15 +2167,6 @@ impl DearMirlGuiModule for TextInput {
         formatting: &crate::Formatting,
         info: &crate::ModuleDrawInfo,
     ) -> (Buffer, InsertionMode) {
-        fn shimmer(buffer: &mut Buffer, xy: (usize, usize), new_color: u32) {
-            let under = buffer.get_pixel_unsafe(xy);
-            buffer.set_pixel_safe(
-                xy,
-                mirl::graphics::interpolate_color_rgb_u32_f32(
-                    under, new_color, 0.5,
-                ),
-            );
-        }
         // Settings
         let text_color = formatting.text_color;
         let text_size_mul = 0.8;
@@ -2186,210 +2205,222 @@ impl DearMirlGuiModule for TextInput {
                 &formatting.font,
             );
         }
-        if self.caret[0].is_highlighting()
-            && let Some((line_start, line_end, front_pos, back_pos)) = {
-                let head = self.caret[0].highlight_pos;
-                let tail = self.caret[0].to_position();
-                if head == tail {
-                    None
-                } else if head.line > tail.line {
-                    Some((tail.line, head.line, tail.column, head.column))
-                } else if tail.line > head.line || tail.column > head.column {
-                    Some((head.line, tail.line, head.column, tail.column))
-                } else {
-                    Some((head.line, tail.line, tail.column, head.column))
+        let self_buffer_height = self.get_height(formatting);
+        for caret in &self.caret {
+            if caret.is_highlighting()
+                && let Some((line_start, line_end, front_pos, back_pos)) = {
+                    let head = caret.highlight_pos;
+                    let tail = caret.to_position();
+                    if head == tail {
+                        None
+                    } else if head.line > tail.line {
+                        Some((tail.line, head.line, tail.column, head.column))
+                    } else if tail.line > head.line || tail.column > head.column
+                    {
+                        Some((head.line, tail.line, head.column, tail.column))
+                    } else {
+                        Some((head.line, tail.line, tail.column, head.column))
+                    }
                 }
-            }
-        {
-            let total_lines = line_end - line_start;
-            let text_until = self.text[line_start]
-                .chars()
-                .take(front_pos)
-                .collect::<String>();
-            let first_line_offset = render::get_text_width(
-                &text_until,
-                self.text_height,
-                &formatting.font,
-            );
-
-            drop(text_until);
-            if total_lines == 0 && front_pos != back_pos {
-                // Single line selection - this part looks correct
-                let text_between = self.text[line_start]
+            {
+                let total_lines = line_end - line_start;
+                let text_until = self.text[line_start]
                     .chars()
-                    .skip(front_pos)
-                    .take(back_pos - front_pos)
+                    .take(front_pos)
                     .collect::<String>();
-                let first_line_width = render::get_text_width(
-                    &text_between,
+                let first_line_offset = render::get_text_width(
+                    &text_until,
                     self.text_height,
                     &formatting.font,
-                );
-                render::execute_at_rectangle::<true>(
-                    &mut buffer,
-                    (
-                        first_line_offset as isize
-                            + self.get_horizontal_text_offset(formatting)
-                                as isize,
-                        (line_start
-                            * (self.line_height + formatting.vertical_margin)
-                            + formatting.vertical_margin)
-                            as isize,
-                    ),
-                    (first_line_width as isize, self.line_height as isize),
-                    highlight_color,
-                    shimmer,
-                );
-            } else {
-                // Multi-line selection
-                // First line - highlight from front_pos to end of line
-                let first_line_length = mirl::render::get_text_width(
-                    &self.text[line_start],
-                    self.text_height,
-                    &formatting.font,
-                ) - first_line_offset;
-                render::execute_at_rectangle::<true>(
-                    &mut buffer,
-                    (
-                        first_line_offset as isize
-                            + self.get_horizontal_text_offset(formatting)
-                                as isize,
-                        (line_start
-                            * (self.line_height + formatting.vertical_margin)
-                            + formatting.vertical_margin)
-                            as isize,
-                    ),
-                    (first_line_length as isize, self.line_height as isize),
-                    highlight_color,
-                    shimmer,
                 );
 
-                // Middle lines - highlight entire lines
-                for i in 1..total_lines as isize {
+                drop(text_until);
+                if total_lines == 0 && front_pos != back_pos {
+                    // Single line selection - this part looks correct
+                    let text_between = self.text[line_start]
+                        .chars()
+                        .skip(front_pos)
+                        .take(back_pos - front_pos)
+                        .collect::<String>();
+                    let first_line_width = render::get_text_width(
+                        &text_between,
+                        self.text_height,
+                        &formatting.font,
+                    );
+                    render::execute_at_rectangle::<true>(
+                        &mut buffer,
+                        (
+                            first_line_offset as isize
+                                + self.get_horizontal_text_offset(formatting)
+                                    as isize,
+                            (line_start
+                                * (self.line_height
+                                    + formatting.vertical_margin)
+                                + formatting.vertical_margin)
+                                as isize,
+                        ),
+                        (first_line_width as isize, self.line_height as isize),
+                        highlight_color,
+                        shimmer,
+                    );
+                } else {
+                    // Multi-line selection
+                    // First line - highlight from front_pos to end of line
+                    let first_line_length = mirl::render::get_text_width(
+                        &self.text[line_start],
+                        self.text_height,
+                        &formatting.font,
+                    ) - first_line_offset;
+                    render::execute_at_rectangle::<true>(
+                        &mut buffer,
+                        (
+                            first_line_offset as isize
+                                + self.get_horizontal_text_offset(formatting)
+                                    as isize,
+                            (line_start
+                                * (self.line_height
+                                    + formatting.vertical_margin)
+                                + formatting.vertical_margin)
+                                as isize,
+                        ),
+                        (first_line_length as isize, self.line_height as isize),
+                        highlight_color,
+                        shimmer,
+                    );
+
+                    // Middle lines - highlight entire lines
+                    for i in 1..total_lines as isize {
+                        render::execute_at_rectangle::<true>(
+                            &mut buffer,
+                            (
+                                self.get_horizontal_text_offset(formatting)
+                                    as isize,
+                                ((line_start.saturating_add_signed(i))
+                                    * (formatting.vertical_margin
+                                        + self.line_height)
+                                    + formatting.vertical_margin)
+                                    as isize,
+                            ),
+                            (
+                                mirl::render::get_text_width(
+                                    &self.text
+                                        [line_start.saturating_add_signed(i)],
+                                    self.text_height,
+                                    &formatting.font,
+                                ) as isize,
+                                self.line_height as isize,
+                            ),
+                            highlight_color,
+                            shimmer,
+                        );
+                    }
+
+                    // Last line - highlight from start of line to back_pos
+                    let text_until_end = self.text[line_end]
+                        .chars()
+                        .take(back_pos) // <- Fixed: was front_pos
+                        .collect::<String>();
+                    let last_line_length = render::get_text_width(
+                        &text_until_end,
+                        self.text_height,
+                        &formatting.font,
+                    );
                     render::execute_at_rectangle::<true>(
                         &mut buffer,
                         (
                             self.get_horizontal_text_offset(formatting)
-                                as isize,
-                            ((line_start.saturating_add_signed(i))
-                                * (formatting.vertical_margin
-                                    + self.line_height)
+                                as isize, // <- Fixed: start from beginning of line
+                            (line_end
+                                * (self.line_height
+                                    + formatting.vertical_margin)
                                 + formatting.vertical_margin)
                                 as isize,
                         ),
-                        (
-                            mirl::render::get_text_width(
-                                &self.text[line_start.saturating_add_signed(i)],
-                                self.text_height,
-                                &formatting.font,
-                            ) as isize,
-                            self.line_height as isize,
-                        ),
+                        (last_line_length as isize, self.line_height as isize), // <- Fixed: just the length
                         highlight_color,
                         shimmer,
                     );
                 }
+            }
 
-                // Last line - highlight from start of line to back_pos
-                let text_until_end = self.text[line_end]
+            if self.selected == info.container_id {
+                let before = self.text[caret.line()]
                     .chars()
-                    .take(back_pos) // <- Fixed: was front_pos
+                    .take(caret.column())
                     .collect::<String>();
-                let last_line_length = render::get_text_width(
-                    &text_until_end,
-                    self.text_height,
+
+                // The normal x position of the cursor
+                let offset = render::get_text_width(
+                    &before,
+                    self.line_height as f32 * text_size_mul,
                     &formatting.font,
                 );
                 render::execute_at_rectangle::<true>(
                     &mut buffer,
                     (
-                        self.get_horizontal_text_offset(formatting) as isize, // <- Fixed: start from beginning of line
-                        (line_end
-                            * (self.line_height + formatting.vertical_margin)
-                            + formatting.vertical_margin)
-                            as isize,
+                        offset as isize
+                            + self.get_horizontal_text_offset(formatting)
+                                as isize,
+                        self.get_line_height(formatting, 0)
+                            + self.get_vertical_text_offset(formatting)
+                                as isize,
                     ),
-                    (last_line_length as isize, self.line_height as isize), // <- Fixed: just the length
-                    highlight_color,
-                    shimmer,
+                    (caret_width as isize, self.line_height as isize),
+                    caret_color,
+                    mirl::prelude::Buffer::invert_color_if_same::<{ DRAW_SAFE }>,
                 );
             }
-        }
-
-        if self.selected == info.container_id {
-            let before = self.text[self.caret[0].line()]
-                .chars()
-                .take(self.caret[0].column())
-                .collect::<String>();
-
-            // The normal x position of the cursor
-            let offset = render::get_text_width(
-                &before,
-                self.line_height as f32 * text_size_mul,
-                &formatting.font,
-            );
-            render::execute_at_rectangle::<true>(
-                &mut buffer,
-                (
-                    offset as isize
-                        + self.get_horizontal_text_offset(formatting) as isize,
-                    self.get_line_height(formatting, 0)
-                        + self.get_vertical_text_offset(formatting) as isize,
-                ),
-                (caret_width as isize, self.line_height as isize),
-                caret_color,
-                mirl::platform::Buffer::invert_color_if_same::<{ DRAW_SAFE }>,
-            );
-        }
-        if self.text.len() == 1 && self.text[0].chars().count() == 0 {
-            render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
-                &mut buffer,
-                &self.placeholder_text,
-                (
-                    self.get_horizontal_text_offset(formatting) as usize,
-                    self.get_vertical_text_offset(formatting) as usize,
-                ),
-                mirl::graphics::adjust_brightness_hsl_of_rgb(
-                    text_color,
-                    placeholder_color_change,
-                ),
-                self.line_height as f32 * text_size_mul,
-                &formatting.font,
-            );
-        }
-        if self.show_line_numbers {
-            // Line number background
-            render::draw_rectangle::<{ crate::DRAW_SAFE }>(
-                &mut buffer,
-                (0, 0),
-                (
-                    self.line_number_offset as isize
-                        + formatting.horizontal_margin as isize * 2,
-                    self.get_height(formatting) as isize,
-                ),
-                mirl::graphics::adjust_brightness_hsl_of_rgb(
-                    background_color,
-                    line_number_padding_color_change,
-                ),
-            );
-            for idx in 0..self.text.len() {
-                let y = (idx * (self.line_height + formatting.vertical_margin)
-                    + formatting.vertical_margin)
-                    as crate::DearMirlGuiCoordinateType
-                    + self.camera.offset_y as crate::DearMirlGuiCoordinateType;
-                // Text line number
-
-                draw_text_antialiased_isize::<{ crate::DRAW_SAFE }>(
+            if self.text.len() == 1 && self.text[0].chars().count() == 0 {
+                render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
                     &mut buffer,
-                    &(idx + 1).to_string(),
-                    (formatting.horizontal_margin as isize, y as isize),
-                    text_color,
+                    &self.placeholder_text,
+                    (
+                        self.get_horizontal_text_offset(formatting) as usize,
+                        self.get_vertical_text_offset(formatting) as usize,
+                    ),
+                    mirl::graphics::adjust_brightness_hsl_of_rgb(
+                        text_color,
+                        placeholder_color_change,
+                    ),
                     self.line_height as f32 * text_size_mul,
                     &formatting.font,
                 );
             }
-        }
+            if self.show_line_numbers {
+                // Line number background
+                render::draw_rectangle::<{ crate::DRAW_SAFE }>(
+                    &mut buffer,
+                    (0, 0),
+                    (
+                        self.line_number_offset as isize
+                            + formatting.horizontal_margin as isize * 2,
+                        self_buffer_height as isize,
+                    ),
+                    mirl::graphics::adjust_brightness_hsl_of_rgb(
+                        background_color,
+                        line_number_padding_color_change,
+                    ),
+                );
+                for idx in 0..self.text.len() {
+                    let y = (idx
+                        * (self.line_height + formatting.vertical_margin)
+                        + formatting.vertical_margin)
+                        as crate::DearMirlGuiCoordinateType
+                        + self.camera.offset_y
+                            as crate::DearMirlGuiCoordinateType;
+                    // Text line number
 
+                    draw_text_antialiased_isize::<{ crate::DRAW_SAFE }>(
+                        &mut buffer,
+                        &(idx + 1).to_string(),
+                        (formatting.horizontal_margin as isize, y as isize),
+                        text_color,
+                        self.line_height as f32 * text_size_mul,
+                        &formatting.font,
+                    );
+                }
+            }
+        }
         // render::draw_text_antialiased::<{ crate::DRAW_SAFE }>(
         //   &buffer,
         //   &after,
@@ -2420,36 +2451,45 @@ impl DearMirlGuiModule for TextInput {
     fn update(&mut self, info: &crate::ModuleUpdateInfo) -> crate::GuiOutput {
         let mut cursor_style = None;
         let formatting = &get_formatting();
-        let collision = mirl::math::collision::Rectangle::<_, false>::new(
-            0,
-            0,
-            self.get_width(formatting) as i32,
-            self.get_height(formatting) as i32,
+        let collision = mirl::math::geometry::Pos2D::<
+            _,
+            mirl::math::collision::Rectangle<_, false>,
+        >::new(
+            (0.0, 0.0),
+            mirl::math::collision::Rectangle::new((
+                self.get_width(formatting) as f32,
+                self.get_height(formatting) as f32,
+            )),
         );
         if info.focus_taken == FocusTaken::FunctionallyTaken
             && info.container_id == self.selected
         {
             self.selected = 0;
-            self.caret[0].reset_highlighted();
-            self.caret[0].restore_default();
+            self.caret.iter_mut().for_each(|x| {
+                x.reset_highlighted();
+                x.restore_default();
+            });
         }
         let mut took_functional_focus = false;
         //println!("{} {}", self.selected, info.container_id);
 
         if let Some(mouse_position) = info.mouse_pos {
             let collides = collision.does_area_contain_point(mouse_position);
+            //println!("\n\n\n\n{collision:?}\n{mouse_position:?}\n{collides}");
             if collides {
                 cursor_style = Some(CursorStyle::Text);
 
-                if info.container_id == self.selected
-                    && let Some(scroll) = info.mouse_scroll
-                {
+                if info.container_id == self.selected {
                     let shift_pressed =
                         info.pressed_keys.contains(&KeyCode::LeftShift)
                             || info.pressed_keys.contains(&KeyCode::RightShift);
-                    if scroll != (0.0, 0.0) {
+                    if info.mouse_scroll != (0.0, 0.0) {
                         took_functional_focus = true;
-                        self.handle_scroll(scroll, !shift_pressed, formatting);
+                        self.handle_scroll(
+                            info.mouse_scroll,
+                            !shift_pressed,
+                            formatting,
+                        );
                     }
                 }
                 if info.mouse_info.left.clicked
@@ -2458,7 +2498,7 @@ impl DearMirlGuiModule for TextInput {
                 {
                     took_functional_focus = true;
                     self.selected = info.container_id;
-                    if mouse_position.0 > self.line_number_offset as i32 {
+                    if mouse_position.0 > self.line_number_offset as f32 {
                         let vertical = ((mouse_position.1 as f32
                             - self.camera.offset_y)
                             as usize
@@ -2473,14 +2513,29 @@ impl DearMirlGuiModule for TextInput {
                                 (mouse_position.0
                                     - self
                                         .get_horizontal_text_offset(formatting)
-                                        as i32)
+                                        as f32)
                                     as f32,
                             );
                         let new_caret = Caret::new(vertical, horizontal);
-                        if self.caret[0] == new_caret {
-                            self.select_structure(0);
+
+                        // Reminder: Here is the cursor added upon clicking -> Multi caret support
+                        if self.caret.is_empty() {
+                            self.caret = vec![new_caret];
                         } else {
-                            self.caret[0] = new_caret;
+                            let mut found = None;
+                            for (idx, caret) in self.caret.iter().enumerate() {
+                                if new_caret.eq(caret) {
+                                    found = Some(idx);
+                                    break;
+                                }
+                            }
+                            if let Some(found) = found {
+                                self.select_structure(found);
+                            } else {
+                                // Is key down for placing another caret?
+                                // No?
+                                self.caret = vec![new_caret];
+                            }
                         }
                     }
                 }
@@ -2616,4 +2671,12 @@ impl TextInput {
         self.blacklist_is_whitelist = blacklist_is_whitelist;
         self
     }
+}
+/// Check if the given text position is inside a specified area
+#[must_use]
+pub const fn is_point_in_area(
+    area: (TextPosition, TextPosition),
+    point: TextPosition,
+) -> bool {
+    area.0 < point && point < area.1
 }

@@ -1,5 +1,5 @@
 use crate::{
-    Any, Buffer, CursorStyle, KeyCode, DearMirlGuiItem, MouseData, render,
+    Any, Buffer, CursorStyle, DearMirlGuiItem, KeyCode, MouseData, render,
 };
 pub struct ColorPicker {
     pub width: usize,

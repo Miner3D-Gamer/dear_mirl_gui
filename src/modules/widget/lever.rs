@@ -1,10 +1,10 @@
 use mirl::{
     graphics::rgba_to_u32,
     math::{get_center_position_of_object_for_object, interpolate},
+    prelude::Buffer, render,
 };
 
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, get_formatting, render};
-
+use crate::{DearMirlGuiModule, module_manager::InsertionMode, prelude::get_formatting};
 #[derive(Debug, Clone, PartialEq)]
 /// A simple lever module
 pub struct Lever {
@@ -260,13 +260,16 @@ impl DearMirlGuiModule for Lever {
             self.elevation,
         ) as crate::DearMirlGuiCoordinateType;
 
-        let handle_collision: mirl::math::collision::Rectangle<_, true> =
-            mirl::math::collision::Rectangle::new(
-                handle_offset.0 as i32,
-                handle_pos as i32,
-                handle_width as i32,
-                handle_height as i32,
-            );
+        let handle_collision: mirl::math::geometry::Pos2D<
+            _,
+            mirl::math::collision::Rectangle<_, true>,
+        > = mirl::math::geometry::Pos2D::new(
+            (handle_offset.0 as f32, handle_pos as f32),
+            mirl::math::collision::Rectangle::new((
+                handle_width as f32,
+                handle_height as f32,
+            )),
+        );
         let collides = handle_collision.does_area_contain_point(mouse_pos);
 
         if (self.selected == info.container_id && info.mouse_info.left.down)
@@ -275,14 +278,14 @@ impl DearMirlGuiModule for Lever {
             self.selected = info.container_id;
 
             let target = if false {
-                let bottom = handle_height as i32;
+                let bottom = handle_height as f32;
                 let top = (handle_offset.1 + hole_offset.1)
                     as crate::DearMirlGuiCoordinateType;
 
                 let adjusted_mouse_pos = mouse_pos.1 - bottom;
                 adjusted_mouse_pos as f32 / top as f32
             } else if mouse_pos.1
-                > (handle_half_height + handle_offset.1) as i32
+                > (handle_half_height + handle_offset.1) as f32
             {
                 1.0
                 // return crate::GuiOutput::default(

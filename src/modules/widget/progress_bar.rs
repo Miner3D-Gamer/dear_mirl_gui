@@ -1,11 +1,15 @@
+use mirl::prelude::Buffer;
+use mirl::render;
 use mirl::{
     //extensions::*,
     graphics::rgba_to_u32,
     math::interpolate,
 };
 
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
-
+use crate::{
+    DearMirlGuiModule,
+    module_manager::{InsertionMode, get_formatting},
+};
 #[derive(Debug, Clone, PartialEq)]
 /// A Progress Bar module
 pub struct ProgressBar {
@@ -27,20 +31,29 @@ pub struct ProgressBar {
 impl ProgressBar {
     #[must_use]
     #[allow(missing_docs)]
-    pub fn new(
-        height: usize,
-        width: Option<usize>,
-        progress: Option<f32>,
-        progress_bar_vertical: bool,
-    ) -> Self {
+    pub fn new(progress: Option<f32>, progress_bar_vertical: bool) -> Self {
+        let formatting = get_formatting();
+        let height = formatting.height;
         Self {
-            width: width.unwrap_or(height * 3),
+            width: height * 3,
             height,
             progress: progress.unwrap_or(0.0),
             progress_bar_vertical,
             needs_redraw: std::cell::Cell::new(false),
             previous_progress: 0.0,
         }
+    }
+    #[must_use]
+    /// An inline function for setting a custom height, use [with_width](Self::with_width) for setting the width
+    pub const fn with_height(mut self, height: usize) -> Self {
+        self.height = height;
+        self
+    }
+    #[must_use]
+    /// An inline function for setting a custom width, use [with_height](Self::with_height) for setting the height
+    pub const fn with_width(mut self, width: usize) -> Self {
+        self.width = width;
+        self
     }
 }
 

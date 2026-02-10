@@ -1,9 +1,49 @@
 use core::f32;
 
-use mirl::extensions::*;
-use mirl::{extensions::Tuple2Into, platform::CursorStyle};
+use mirl::{extensions::*, platform::CursorStyle, prelude::Buffer, render};
 
-use crate::{Buffer, DearMirlGuiModule, InsertionMode, render};
+use crate::{DearMirlGuiModule, ModulePath, module_manager::InsertionMode};
+
+/// Path inline support for [Crank]
+pub trait CrankPathSupport {
+    /// Get how many rotations this crank has made
+    fn get_rotations(&self) -> isize;
+    /// Get the progress of the rotation, 0.0..1.0
+    fn get_rotation(&self) -> f32;
+    /// Set the progress of the rotation, 0.0..1.0
+    fn set_rotation(&self, rotation: f32);
+    /// Set how many rotations this crank has made
+    fn set_rotations(&self, rotations: isize);
+}
+impl CrankPathSupport for ModulePath<Crank> {
+    fn get_rotations(&self) -> isize {
+        crate::module_manager::get_module_as::<_, _>(self, |check| {
+            check.rotations
+        })
+        .unwrap_or_default()
+    }
+
+    fn get_rotation(&self) -> f32 {
+        crate::module_manager::get_module_as::<_, _>(self, |check| {
+            check.rotation
+        })
+        .unwrap_or_default()
+    }
+
+    fn set_rotation(&self, rotation: f32) {
+        let _ =
+            crate::module_manager::get_module_as_mut::<_, _>(self, |check| {
+                check.rotation = rotation;
+            });
+    }
+
+    fn set_rotations(&self, rotations: isize) {
+        let _ =
+            crate::module_manager::get_module_as_mut::<_, _>(self, |check| {
+                check.rotations = rotations;
+            });
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 /// A simple text module
@@ -142,12 +182,15 @@ impl DearMirlGuiModule for Crank {
             return crate::GuiOutput::empty();
         };
         let (offset, x, y) = self.get_position();
-        let collision: mirl::math::collision::Circle<i32, false> =
+        let collision: mirl::math::geometry::Pos2D<
+            _,
+            mirl::math::collision::Circle<f32, false>,
+        > = mirl::math::geometry::Pos2D::new(
+            (x as f32, y as f32),
             mirl::math::collision::Circle::new(
-                x as i32,
-                y as i32,
-                (self.size as f32 * self.crank_handle_size) as i32,
-            );
+                self.size as f32 * self.crank_handle_size,
+            ),
+        );
 
         let mouse_collides = collision.does_area_contain_point(mouse_pos);
 
@@ -155,12 +198,13 @@ impl DearMirlGuiModule for Crank {
             || (info.mouse_info.left.clicked && mouse_collides)
         {
             self.cranking = info.container_id;
-            let middle: mirl::math::collision::Circle<_, false> =
-                mirl::math::collision::Circle::new(
-                    offset as f32,
-                    offset as f32,
-                    1.0,
-                );
+            let middle: mirl::math::geometry::Pos2D<
+                _,
+                mirl::math::collision::Circle<_, false>,
+            > = mirl::math::geometry::Pos2D::new(
+                (offset as f32, offset as f32),
+                mirl::math::collision::Circle::new(1.0),
+            );
             let closest: (f32, f32) = middle
                 .get_closest_point_on_edge(
                     mouse_pos.try_tuple_into().unwrap_or_default(),
