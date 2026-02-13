@@ -8,7 +8,7 @@ exclude = ["./modules/concepts/*"]
 repository = "https://github.com/Miner3D-Gamer/dear_mirl_gui"
 keywords = ["gui", "rmgui", "mirl", "debugging", "widgets"]
 
-categories = ["gui", "text_editors"]
+categories = ["gui", "text-editors"]
 
 [dependencies]
 
