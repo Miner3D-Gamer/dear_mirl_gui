@@ -8,6 +8,8 @@ exclude = ["./modules/concepts/*"]
 repository = "https://github.com/Miner3D-Gamer/dear_mirl_gui"
 keywords = ["gui", "rmgui", "mirl", "debugging", "widgets", "text_editor"]
 
+categories = ["gui", "text_editors"]
+
 [dependencies]
 
 # reflectable_derive = { path = "../reflectable_derive" }

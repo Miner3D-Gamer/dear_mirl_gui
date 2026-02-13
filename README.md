@@ -123,7 +123,7 @@ For plugin devs (Api details):
 - Selection => Radio Buttons with the option of selecting multiple options
 - Slider => Slider from 0 to 1 supporting custom ranges
 - Text Input => Virtual text box (Supports custom keybinds)
-- Text => Display text
+- Text Display => Display text
 
 ## To be added (3):
 

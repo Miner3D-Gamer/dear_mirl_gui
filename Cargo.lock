@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "mirl"
-version = "9.0.1"
+version = "9.0.2"
 dependencies = [
  "device_query",
  "font-kit",
@@ -654,6 +654,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tempfile",
+ "version_check",
  "wasm-bindgen",
  "web-sys",
  "winapi",
@@ -1220,6 +1221,12 @@ name = "version-compare"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "579a42fc0b8e0c63b76519a339be31bed574929511fa53c1a3acae26eb258f29"
+
+[[package]]
+name = "version_check"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "walkdir"
